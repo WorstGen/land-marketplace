@@ -482,166 +482,7 @@ function App() {
           <div>
             {wallet ? (
               <div>
-                <p style={{ fontSize: '1.2rem', opacity: 0.9 }}>
-              New climate zone unlocking...
-            </p>
-            <div style={{
-              width: '200px',
-              height: '4px',
-              background: 'rgba(255,255,255,0.2)',
-              borderRadius: '2px',
-              margin: '20px auto',
-              overflow: 'hidden'
-            }}>
-              <div style={{
-                width: '100%',
-                height: '100%',
-                background: 'linear-gradient(90deg, #2ed573, #26d068)',
-                borderRadius: '2px'
-              }} />
-            </div>
-          </div>
-        )}
-
-        {/* Info Section */}
-        <div style={{ 
-          background: 'rgba(255,255,255,0.15)', 
-          borderRadius: '20px', 
-          padding: '30px',
-          textAlign: 'center',
-          backdropFilter: 'blur(15px)',
-          border: `2px solid ${currentTheme.accent}40`
-        }}>
-          <h3 style={{ fontSize: '1.8rem', marginBottom: '20px' }}>🏗️ How Sequential Land Empire Works</h3>
-          
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-            gap: '25px',
-            marginBottom: '25px'
-          }}>
-            <div style={{
-              background: 'rgba(255,255,255,0.1)',
-              padding: '20px',
-              borderRadius: '15px',
-              border: `1px solid ${currentTheme.accent}30`
-            }}>
-              <h4 style={{ marginBottom: '10px' }}>🎯 Sequential Purchasing</h4>
-              <p style={{ fontSize: '0.95rem', opacity: 0.9 }}>
-                You must purchase plots in order - no skipping ahead! This ensures fair progression for all players.
-              </p>
-            </div>
-            
-            <div style={{
-              background: 'rgba(255,255,255,0.1)',
-              padding: '20px',
-              borderRadius: '15px',
-              border: `1px solid ${currentTheme.accent}30`
-            }}>
-              <h4 style={{ marginBottom: '10px' }}>🌍 Climate Progression</h4>
-              <p style={{ fontSize: '0.95rem', opacity: 0.9 }}>
-                Each completed area unlocks a new climate zone with unique themes, from forests to arctic tundra.
-              </p>
-            </div>
-            
-            <div style={{
-              background: 'rgba(255,255,255,0.1)',
-              padding: '20px',
-              borderRadius: '15px',
-              border: `1px solid ${currentTheme.accent}30`
-            }}>
-              <h4 style={{ marginBottom: '10px' }}>📊 Blockchain Persistence</h4>
-              <p style={{ fontSize: '0.95rem', opacity: 0.9 }}>
-                All purchases are permanently recorded on Solana with transaction signatures and timestamps.
-              </p>
-            </div>
-          </div>
-
-          <div style={{ marginBottom: '20px' }}>
-            <p style={{ fontSize: '1rem', marginBottom: '8px' }}>
-              💰 Current Area {landData.currentArea} Price: {calculatePrice(landData.currentArea).toFixed(4)} SOL
-            </p>
-            <p style={{ fontSize: '0.95rem', marginBottom: '8px' }}>
-              🪙 Pay with SOL or DEMPLAR tokens at current USD rates
-            </p>
-            <p style={{ fontSize: '0.95rem', marginBottom: '8px' }}>
-              🔄 Complete areas to unlock new climate zones automatically
-            </p>
-          </div>
-
-          {NETWORK === 'devnet' && (
-            <div style={{
-              background: 'rgba(255, 235, 59, 0.2)',
-              border: '2px solid #ffeb3b',
-              borderRadius: '15px',
-              padding: '20px',
-              marginBottom: '20px'
-            }}>
-              <p style={{ fontSize: '1rem', color: '#ffeb3b', fontWeight: 'bold', marginBottom: '10px' }}>
-                🧪 DEVNET TESTING MODE
-              </p>
-              <p style={{ fontSize: '0.95rem', opacity: 0.9 }}>
-                Prices are 1% of mainnet for easy testing. Use "Get Test SOL" for free devnet SOL!
-                All transactions are on Solana devnet and have no real value.
-              </p>
-            </div>
-          )}
-          
-          <div style={{ fontSize: '0.85rem', opacity: 0.8, marginTop: '20px' }}>
-            <p style={{ marginBottom: '5px' }}>
-              Token: {DEMPLAR_MINT.toString().slice(0, 8)}...{DEMPLAR_MINT.toString().slice(-8)}
-            </p>
-            <p style={{ margin: 0 }}>
-              Treasury: {TREASURY_WALLET.toString().slice(0, 8)}...{TREASURY_WALLET.toString().slice(-8)}
-            </p>
-          </div>
-        </div>
-
-        {/* Purchase History */}
-        {purchaseHistory.length > 0 && (
-          <div style={{
-            background: 'rgba(255,255,255,0.1)',
-            borderRadius: '20px',
-            padding: '25px',
-            marginTop: '30px',
-            backdropFilter: 'blur(10px)'
-          }}>
-            <h3 style={{ marginBottom: '20px', textAlign: 'center' }}>📜 Your Purchase History</h3>
-            <div style={{
-              maxHeight: '200px',
-              overflowY: 'auto',
-              background: 'rgba(0,0,0,0.2)',
-              borderRadius: '10px',
-              padding: '15px'
-            }}>
-              {purchaseHistory
-                .slice()
-                .reverse()
-                .map((record, index) => (
-                  <div key={index} style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '8px 0',
-                    borderBottom: index < purchaseHistory.length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none',
-                    fontSize: '0.9rem'
-                  }}>
-                    <span>Plot {record.plotId}</span>
-                    <span>{record.price?.toFixed(4)} {record.paymentMethod}</span>
-                    <span style={{ opacity: 0.7 }}>
-                      {new Date(record.timestamp).toLocaleDateString()}
-                    </span>
-                  </div>
-                ))}
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-export default App style={{ fontSize: '1.1rem', marginBottom: '8px' }}>
+                <p style={{ fontSize: '1.1rem', marginBottom: '8px' }}>
                   <strong>Connected:</strong> {wallet.toString().slice(0, 8)}...{wallet.toString().slice(-8)}
                 </p>
                 <p style={{ margin: '5px 0' }}><strong>SOL:</strong> {balance.toFixed(4)} SOL</p>
@@ -959,13 +800,169 @@ export default App style={{ fontSize: '1.1rem', marginBottom: '8px' }}>
             borderRadius: '20px',
             backdropFilter: 'blur(10px)'
           }}>
-            <div style={{
-              fontSize: '3rem',
-              marginBottom: '20px'
-            }}>
+            <div style={{ fontSize: '3rem', marginBottom: '20px' }}>
               🎉
             </div>
             <h2 style={{ marginBottom: '15px', color: '#2ed573' }}>
               Area Completed!
             </h2>
-            <p
+            <p style={{ fontSize: '1.2rem', opacity: 0.9 }}>
+              New climate zone unlocking...
+            </p>
+            <div style={{
+              width: '200px',
+              height: '4px',
+              background: 'rgba(255,255,255,0.2)',
+              borderRadius: '2px',
+              margin: '20px auto',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                width: '100%',
+                height: '100%',
+                background: 'linear-gradient(90deg, #2ed573, #26d068)',
+                borderRadius: '2px'
+              }} />
+            </div>
+          </div>
+        )}
+
+        {/* Info Section */}
+        <div style={{ 
+          background: 'rgba(255,255,255,0.15)', 
+          borderRadius: '20px', 
+          padding: '30px',
+          textAlign: 'center',
+          backdropFilter: 'blur(15px)',
+          border: `2px solid ${currentTheme.accent}40`
+        }}>
+          <h3 style={{ fontSize: '1.8rem', marginBottom: '20px' }}>🏗️ How Sequential Land Empire Works</h3>
+          
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '25px',
+            marginBottom: '25px'
+          }}>
+            <div style={{
+              background: 'rgba(255,255,255,0.1)',
+              padding: '20px',
+              borderRadius: '15px',
+              border: `1px solid ${currentTheme.accent}30`
+            }}>
+              <h4 style={{ marginBottom: '10px' }}>🎯 Sequential Purchasing</h4>
+              <p style={{ fontSize: '0.95rem', opacity: 0.9 }}>
+                You must purchase plots in order - no skipping ahead! This ensures fair progression for all players.
+              </p>
+            </div>
+            
+            <div style={{
+              background: 'rgba(255,255,255,0.1)',
+              padding: '20px',
+              borderRadius: '15px',
+              border: `1px solid ${currentTheme.accent}30`
+            }}>
+              <h4 style={{ marginBottom: '10px' }}>🌍 Climate Progression</h4>
+              <p style={{ fontSize: '0.95rem', opacity: 0.9 }}>
+                Each completed area unlocks a new climate zone with unique themes, from forests to arctic tundra.
+              </p>
+            </div>
+            
+            <div style={{
+              background: 'rgba(255,255,255,0.1)',
+              padding: '20px',
+              borderRadius: '15px',
+              border: `1px solid ${currentTheme.accent}30`
+            }}>
+              <h4 style={{ marginBottom: '10px' }}>📊 Blockchain Persistence</h4>
+              <p style={{ fontSize: '0.95rem', opacity: 0.9 }}>
+                All purchases are permanently recorded on Solana with transaction signatures and timestamps.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '20px' }}>
+            <p style={{ fontSize: '1rem', marginBottom: '8px' }}>
+              💰 Current Area {landData.currentArea} Price: {calculatePrice(landData.currentArea).toFixed(4)} SOL
+            </p>
+            <p style={{ fontSize: '0.95rem', marginBottom: '8px' }}>
+              🪙 Pay with SOL or DEMPLAR tokens at current USD rates
+            </p>
+            <p style={{ fontSize: '0.95rem', marginBottom: '8px' }}>
+              🔄 Complete areas to unlock new climate zones automatically
+            </p>
+          </div>
+
+          {NETWORK === 'devnet' && (
+            <div style={{
+              background: 'rgba(255, 235, 59, 0.2)',
+              border: '2px solid #ffeb3b',
+              borderRadius: '15px',
+              padding: '20px',
+              marginBottom: '20px'
+            }}>
+              <p style={{ fontSize: '1rem', color: '#ffeb3b', fontWeight: 'bold', marginBottom: '10px' }}>
+                🧪 DEVNET TESTING MODE
+              </p>
+              <p style={{ fontSize: '0.95rem', opacity: 0.9 }}>
+                Prices are 1% of mainnet for easy testing. Use "Get Test SOL" for free devnet SOL!
+                All transactions are on Solana devnet and have no real value.
+              </p>
+            </div>
+          )}
+          
+          <div style={{ fontSize: '0.85rem', opacity: 0.8, marginTop: '20px' }}>
+            <p style={{ marginBottom: '5px' }}>
+              Token: {DEMPLAR_MINT.toString().slice(0, 8)}...{DEMPLAR_MINT.toString().slice(-8)}
+            </p>
+            <p style={{ margin: 0 }}>
+              Treasury: {TREASURY_WALLET.toString().slice(0, 8)}...{TREASURY_WALLET.toString().slice(-8)}
+            </p>
+          </div>
+        </div>
+
+        {/* Purchase History */}
+        {purchaseHistory.length > 0 && (
+          <div style={{
+            background: 'rgba(255,255,255,0.1)',
+            borderRadius: '20px',
+            padding: '25px',
+            marginTop: '30px',
+            backdropFilter: 'blur(10px)'
+          }}>
+            <h3 style={{ marginBottom: '20px', textAlign: 'center' }}>📜 Your Purchase History</h3>
+            <div style={{
+              maxHeight: '200px',
+              overflowY: 'auto',
+              background: 'rgba(0,0,0,0.2)',
+              borderRadius: '10px',
+              padding: '15px'
+            }}>
+              {purchaseHistory
+                .slice()
+                .reverse()
+                .map((record, index) => (
+                  <div key={index} style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '8px 0',
+                    borderBottom: index < purchaseHistory.length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                    fontSize: '0.9rem'
+                  }}>
+                    <span>Plot {record.plotId}</span>
+                    <span>{record.price?.toFixed(4)} {record.paymentMethod}</span>
+                    <span style={{ opacity: 0.7 }}>
+                      {new Date(record.timestamp).toLocaleDateString()}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export default App
