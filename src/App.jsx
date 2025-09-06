@@ -14,8 +14,8 @@ const TOKEN_MINTS = {
 }
 
 const TREASURY_WALLETS = {
-  mainnet: 'YourMainnetTreasuryWalletHere',
-  devnet: 'YourDevnetTreasuryWalletHere'
+  mainnet: 'FKFeSgtKAmgkKwxiXMD8woCWUh1ERyzAZARoFtJi2p9c',
+  devnet: 'EiyuaDkvKCyB6VbLu8NQGaw8euTX4yxq4gJ7bMjf7Nfz'
 }
 
 // Climate themes for different areas
