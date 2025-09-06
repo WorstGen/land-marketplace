@@ -3,7 +3,7 @@ import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } f
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddress, createTransferInstruction } from '@solana/spl-token'
 
 // Network configuration
-const NETWORK = 'devnet' // Change to 'mainnet' for production
+const NETWORK = 'devnet'
 const RPC_URLS = {
   mainnet: 'https://api.mainnet-beta.solana.com',
   devnet: 'https://api.devnet.solana.com'
@@ -53,20 +53,6 @@ const CLIMATE_THEMES = {
     background: "linear-gradient(135deg, #8b0000 0%, #ff4500 50%, #ff6347 100%)", 
     accent: "#ff4500",
     description: "Fiery mountains with lava flows"
-  },
-  12: {
-    name: "Ocean Depths",
-    emoji: "🌊",
-    background: "linear-gradient(135deg, #000080 0%, #006994 50%, #4682b4 100%)",
-    accent: "#006994", 
-    description: "Deep underwater realms with coral reefs"
-  },
-  13: {
-    name: "Sky Islands",
-    emoji: "☁️",
-    background: "linear-gradient(135deg, #87ceeb 0%, #dda0dd 50%, #ffd1dc 100%)",
-    accent: "#dda0dd",
-    description: "Floating islands among the clouds"
   }
 }
 
@@ -80,13 +66,13 @@ function App() {
   const [paymentMethod, setPaymentMethod] = useState('SOL')
   const [animatingNewArea, setAnimatingNewArea] = useState(false)
   
-  // Enhanced land data structure to track all areas and their plots
+  // Enhanced land data structure
   const [landData, setLandData] = useState({
     areas: {
       8: {
         plots: Array.from({length: 9}, (_, i) => ({
           area: 8,
-          plotNumber: i + 2, // Plots 2-10
+          plotNumber: i + 2,
           id: `8-${i + 2}`,
           owned: false,
           owner: null,
@@ -96,7 +82,7 @@ function App() {
           paymentMethod: null
         })),
         completed: false,
-        nextAvailablePlot: 0 // Index of next plot that can be purchased
+        nextAvailablePlot: 0
       }
     },
     currentArea: 8,
@@ -105,25 +91,13 @@ function App() {
 
   const newAreaRef = useRef(null)
 
+  // Purchase history state
+  const [purchaseHistory, setPurchaseHistory] = useState([])
+
   // Calculate price based on area
   const calculatePrice = (area) => {
     const basePrice = (area - 1) * 0.1 + 0.1
     return NETWORK === 'devnet' ? basePrice * 0.01 : basePrice
-  }
-
-  // Load persistent data from localStorage equivalent (in-memory for artifacts)
-  const [persistentData, setPersistentData] = useState(() => {
-    // In a real app, this would load from localStorage or blockchain
-    return {
-      purchaseHistory: [],
-      areaCompletions: []
-    }
-  })
-
-  // Save to persistent storage
-  const savePersistentData = (newData) => {
-    setPersistentData(newData)
-    // In a real app: localStorage.setItem('landMarketplaceData', JSON.stringify(newData))
   }
 
   // Fetch SOL price
@@ -384,7 +358,7 @@ function App() {
         return newLandData
       })
 
-      // Save to persistent storage
+      // Add to purchase history
       const purchaseRecord = {
         plotId,
         area,
@@ -396,11 +370,7 @@ function App() {
         paymentMethod
       }
       
-      const newPersistentData = {
-        ...persistentData,
-        purchaseHistory: [...persistentData.purchaseHistory, purchaseRecord]
-      }
-      savePersistentData(newPersistentData)
+      setPurchaseHistory(prev => [...prev, purchaseRecord])
 
       // Update balances
       if (paymentMethod === 'SOL') {
@@ -476,11 +446,6 @@ function App() {
           <p style={{ margin: '8px 0', fontSize: '1rem', opacity: 0.9 }}>
             {currentTheme.description}
           </p>
-          <p style={{ margin: '5px 0', fontSize: '0.9rem', opacity: 0.7 }}>
-            {NETWORK === 'devnet' 
-              ? 'Testing environment with reduced prices' 
-              : 'Live Solana mainnet'}
-          </p>
         </div>
 
         {/* Header */}
@@ -489,17 +454,15 @@ function App() {
             fontSize: '3.5rem', 
             marginBottom: '15px', 
             textShadow: '3px 3px 6px rgba(0,0,0,0.5)',
-            background: 'linear-gradient(45deg, #fff, #f0f0f0)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent'
+            color: 'white'
           }}>
             🏞️ Sequential Land Empire
           </h1>
           <p style={{ fontSize: '1.3rem', opacity: 0.9, marginBottom: '10px' }}>
-            Build your empire one plot at a time - Sequential purchasing required
+            Build your empire one plot at a time
           </p>
           <p style={{ fontSize: '1rem', opacity: 0.7 }}>
-            SOL: ${solToUsd.toFixed(2)} USD | Network: {NETWORK.toUpperCase()}
+            SOL: ${solToUsd.toFixed(2)} USD
           </p>
         </div>
 
@@ -514,363 +477,12 @@ function App() {
           justifyContent: 'space-between',
           alignItems: 'center',
           flexWrap: 'wrap',
-          gap: '20px',
-          border: `2px solid ${currentTheme.accent}40`
+          gap: '20px'
         }}>
           <div>
             {wallet ? (
               <div>
-                <p style={{ fontSize: '1.1rem', marginBottom: '8px' }}>
-                  <strong>Connected:</strong> {wallet.toString().slice(0, 8)}...{wallet.toString().slice(-8)}
-                </p>
-                <p style={{ margin: '5px 0' }}><strong>SOL:</strong> {balance.toFixed(4)} SOL</p>
-                <p style={{ margin: '5px 0' }}><strong>DEMPLAR:</strong> {demplarBalance.toFixed(2)} DEMPLAR</p>
-              </div>
-            ) : (
-              <p style={{ fontSize: '1.1rem' }}>Connect your wallet to start building your land empire</p>
-            )}
-          </div>
-          
-          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
-            {NETWORK === 'devnet' && wallet && (
-              <button 
-                onClick={requestAirdrop}
-                disabled={loading}
-                style={{
-                  background: loading ? 'rgba(255,255,255,0.3)' : '#ff9800',
-                  color: 'white',
-                  border: 'none',
-                  padding: '14px 20px',
-                  borderRadius: '10px',
-                  cursor: loading ? 'not-allowed' : 'pointer',
-                  fontSize: '14px',
-                  fontWeight: 'bold',
-                  transition: 'all 0.2s'
-                }}
-              >
-                {loading ? '⏳ Airdropping...' : '💰 Get Test SOL'}
-              </button>
-            )}
-            
-            <select 
-              value={paymentMethod} 
-              onChange={(e) => setPaymentMethod(e.target.value)}
-              style={{
-                padding: '12px 15px',
-                borderRadius: '10px',
-                border: 'none',
-                background: 'rgba(255,255,255,0.25)',
-                color: 'white',
-                fontSize: '14px',
-                cursor: 'pointer'
-              }}
-            >
-              <option value="SOL" style={{ color: 'black' }}>Pay with SOL</option>
-              <option value="DEMPLAR" style={{ color: 'black' }}>Pay with DEMPLAR</option>
-            </select>
-            
-            {wallet ? (
-              <button 
-                onClick={disconnectWallet}
-                style={{
-                  background: '#ff4757',
-                  color: 'white',
-                  border: 'none',
-                  padding: '14px 22px',
-                  borderRadius: '10px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: 'bold',
-                  transition: 'all 0.2s'
-                }}
-              >
-                Disconnect
-              </button>
-            ) : (
-              <button 
-                onClick={connectWallet}
-                style={{
-                  background: '#2ed573',
-                  color: 'white',
-                  border: 'none',
-                  padding: '14px 22px',
-                  borderRadius: '10px',
-                  cursor: 'pointer',
-                  fontSize: '14px',
-                  fontWeight: 'bold',
-                  transition: 'all 0.2s'
-                }}
-              >
-                Connect Phantom
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Render all areas */}
-        {Object.entries(landData.areas)
-          .sort(([a], [b]) => parseInt(a) - parseInt(b))
-          .map(([areaNumber, areaData], index) => {
-            const areaNum = parseInt(areaNumber)
-            const theme = CLIMATE_THEMES[areaNum] || CLIMATE_THEMES[8]
-            const price = calculatePrice(areaNum)
-            const demplarPrice = calculateDemplarAmount(price)
-            const isCurrentArea = areaNum === landData.currentArea
-            const nextPlot = areaData.plots[areaData.nextAvailablePlot]
-
-            return (
-              <div 
-                key={areaNumber}
-                ref={isCurrentArea ? newAreaRef : null}
-                style={{ 
-                  marginBottom: '50px',
-                  opacity: isCurrentArea && animatingNewArea ? 0 : 1,
-                  transform: isCurrentArea && animatingNewArea ? 'translateY(50px)' : 'translateY(0)',
-                  transition: 'all 2s ease-in-out'
-                }}
-              >
-                {/* Area Divider */}
-                {index > 0 && (
-                  <div style={{
-                    height: '4px',
-                    background: `linear-gradient(90deg, transparent, ${theme.accent}, transparent)`,
-                    marginBottom: '30px',
-                    borderRadius: '2px'
-                  }} />
-                )}
-
-                {/* Area Header */}
-                <div style={{ 
-                  background: `linear-gradient(135deg, ${theme.accent}40, ${theme.accent}20)`,
-                  backdropFilter: 'blur(10px)',
-                  borderRadius: '20px', 
-                  padding: '25px', 
-                  marginBottom: '30px',
-                  textAlign: 'center',
-                  border: `2px solid ${theme.accent}`,
-                  position: 'relative',
-                  overflow: 'hidden'
-                }}>
-                  {areaData.completed && (
-                    <div style={{
-                      position: 'absolute',
-                      top: '15px',
-                      right: '20px',
-                      background: '#2ed573',
-                      padding: '8px 15px',
-                      borderRadius: '20px',
-                      fontSize: '0.9rem',
-                      fontWeight: 'bold'
-                    }}>
-                      ✅ COMPLETED
-                    </div>
-                  )}
-                  
-                  <h2 style={{ margin: '0 0 15px 0', fontSize: '2.2rem' }}>
-                    {theme.emoji} Area {areaNumber} - {theme.name}
-                  </h2>
-                  <p style={{ fontSize: '1.1rem', opacity: 0.9, marginBottom: '15px' }}>
-                    {theme.description}
-                  </p>
-                  
-                  <div style={{ display: 'flex', justifyContent: 'center', gap: '40px', flexWrap: 'wrap' }}>
-                    <p style={{ fontSize: '1.1rem', margin: '5px 0' }}>
-                      <strong>SOL Price:</strong> {price.toFixed(4)} SOL
-                    </p>
-                    <p style={{ fontSize: '1.1rem', margin: '5px 0' }}>
-                      <strong>DEMPLAR Price:</strong> {demplarPrice.toFixed(2)} DEMPLAR
-                    </p>
-                  </div>
-                  
-                  <div style={{ marginTop: '15px' }}>
-                    <p style={{ opacity: 0.9 }}>
-                      Plots owned: {areaData.plots.filter(p => p.owned).length} / {areaData.plots.length}
-                    </p>
-                    {!areaData.completed && nextPlot && (
-                      <p style={{ fontSize: '1rem', color: '#ffeb3b', fontWeight: 'bold', marginTop: '8px' }}>
-                        🎯 Next available: Plot {nextPlot.id}
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Land Grid */}
-                <div style={{ 
-                  display: 'grid', 
-                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-                  gap: '20px',
-                  marginBottom: '30px'
-                }}>
-                  {areaData.plots.map((plot, plotIndex) => {
-                    const isNextAvailable = plotIndex === areaData.nextAvailablePlot && !areaData.completed
-                    const canPurchase = isNextAvailable && !plot.owned && wallet && !loading
-                    
-                    return (
-                      <div 
-                        key={plot.id}
-                        style={{
-                          background: plot.owned 
-                            ? 'rgba(255, 87, 87, 0.3)' 
-                            : isNextAvailable
-                              ? 'rgba(46, 213, 115, 0.3)'
-                              : 'rgba(128, 128, 128, 0.2)',
-                          border: plot.owned 
-                            ? '3px solid #ff5757' 
-                            : isNextAvailable
-                              ? `3px solid #2ed573`
-                              : '2px solid rgba(255,255,255,0.3)',
-                          borderRadius: '15px',
-                          padding: '20px',
-                          textAlign: 'center',
-                          backdropFilter: 'blur(10px)',
-                          transition: 'all 0.3s ease',
-                          cursor: canPurchase ? 'pointer' : 'default',
-                          position: 'relative',
-                          boxShadow: isNextAvailable ? '0 0 20px rgba(46, 213, 115, 0.5)' : 'none'
-                        }}
-                        onMouseEnter={(e) => {
-                          if (canPurchase) {
-                            e.target.style.transform = 'translateY(-8px) scale(1.02)'
-                            e.target.style.boxShadow = '0 15px 35px rgba(0,0,0,0.3)'
-                          }
-                        }}
-                        onMouseLeave={(e) => {
-                          e.target.style.transform = 'translateY(0) scale(1)'
-                          e.target.style.boxShadow = isNextAvailable ? '0 0 20px rgba(46, 213, 115, 0.5)' : 'none'
-                        }}
-                      >
-                        {isNextAvailable && (
-                          <div style={{
-                            position: 'absolute',
-                            top: '-10px',
-                            right: '-10px',
-                            background: '#ffeb3b',
-                            color: '#000',
-                            borderRadius: '50%',
-                            width: '30px',
-                            height: '30px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            fontSize: '16px',
-                            fontWeight: 'bold',
-                            animation: 'pulse 2s infinite'
-                          }}>
-                            🎯
-                          </div>
-                        )}
-                        
-                        <h3 style={{ margin: '0 0 15px 0', fontSize: '1.4rem' }}>
-                          {theme.emoji} Plot {plot.id}
-                        </h3>
-                        
-                        {plot.owned ? (
-                          <div>
-                            <p style={{ color: '#ff6b6b', fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '10px' }}>
-                              OWNED
-                            </p>
-                            <p style={{ fontSize: '0.85rem', opacity: 0.8, marginBottom: '8px' }}>
-                              Owner: {plot.owner?.slice(0, 6)}...{plot.owner?.slice(-4)}
-                            </p>
-                            <p style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '5px' }}>
-                              Price: {plot.price?.toFixed(4)} {plot.paymentMethod}
-                            </p>
-                            <p style={{ fontSize: '0.8rem', opacity: 0.7 }}>
-                              {plot.purchaseTimestamp ? new Date(plot.purchaseTimestamp).toLocaleDateString() : 'N/A'}
-                            </p>
-                          </div>
-                        ) : isNextAvailable ? (
-                          <div>
-                            <p style={{ marginBottom: '15px', fontSize: '1.1rem' }}>
-                              <strong style={{ color: '#2ed573' }}>NEXT AVAILABLE</strong>
-                            </p>
-                            <p style={{ marginBottom: '15px', fontSize: '1rem' }}>
-                              <strong>
-                                {paymentMethod === 'SOL' 
-                                  ? `${price.toFixed(4)} SOL` 
-                                  : `${demplarPrice.toFixed(2)} DEMPLAR`}
-                              </strong>
-                            </p>
-                            <button
-                              onClick={() => purchaseLand(plot.id)}
-                              disabled={!canPurchase}
-                              style={{
-                                background: canPurchase 
-                                  ? 'linear-gradient(45deg, #2ed573, #26d068)' 
-                                  : 'rgba(255,255,255,0.3)',
-                                color: 'white',
-                                border: 'none',
-                                padding: '14px 24px',
-                                borderRadius: '10px',
-                                cursor: canPurchase ? 'pointer' : 'not-allowed',
-                                fontSize: '15px',
-                                fontWeight: 'bold',
-                                width: '100%',
-                                transition: 'all 0.2s',
-                                boxShadow: canPurchase ? '0 4px 15px rgba(46, 213, 115, 0.3)' : 'none'
-                              }}
-                            >
-                              {loading ? '⏳ Processing...' : `🛒 Buy with ${paymentMethod}`}
-                            </button>
-                          </div>
-                        ) : (
-                          <div>
-                            <p style={{ color: '#888', fontWeight: 'bold', fontSize: '1rem', marginBottom: '10px' }}>
-                              {plot.owned ? 'OWNED' : 'LOCKED'}
-                            </p>
-                            <p style={{ fontSize: '0.9rem', opacity: 0.7, marginBottom: '15px' }}>
-                              {plot.owned 
-                                ? `Purchased for ${price.toFixed(4)} SOL`
-                                : 'Purchase previous plots first'
-                              }
-                            </p>
-                            <button
-                              disabled={true}
-                              style={{
-                                background: 'rgba(255,255,255,0.1)',
-                                color: 'rgba(255,255,255,0.5)',
-                                border: '1px solid rgba(255,255,255,0.2)',
-                                padding: '14px 24px',
-                                borderRadius: '10px',
-                                cursor: 'not-allowed',
-                                fontSize: '14px',
-                                fontWeight: 'bold',
-                                width: '100%'
-                              }}
-                            >
-                              🔒 Locked
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )
-          })}
-
-        {/* New Area Animation */}
-        {animatingNewArea && (
-          <div style={{
-            textAlign: 'center',
-            padding: '40px',
-            marginBottom: '30px',
-            background: 'rgba(255,255,255,0.1)',
-            borderRadius: '20px',
-            backdropFilter: 'blur(10px)'
-          }}>
-            <div style={{
-              fontSize: '3rem',
-              marginBottom: '20px',
-              animation: 'bounce 1s infinite'
-            }}>
-              🎉
-            </div>
-            <h2 style={{ marginBottom: '15px', color: '#2ed573' }}>
-              Area Completed!
-            </h2>
-            <p style={{ fontSize: '1.2rem', opacity: 0.9 }}>
+                <p style={{ fontSize: '1.2rem', opacity: 0.9 }}>
               New climate zone unlocking...
             </p>
             <div style={{
@@ -885,8 +497,7 @@ function App() {
                 width: '100%',
                 height: '100%',
                 background: 'linear-gradient(90deg, #2ed573, #26d068)',
-                borderRadius: '2px',
-                animation: 'loading 2s ease-in-out'
+                borderRadius: '2px'
               }} />
             </div>
           </div>
@@ -987,7 +598,7 @@ function App() {
         </div>
 
         {/* Purchase History */}
-        {persistentData.purchaseHistory.length > 0 && (
+        {purchaseHistory.length > 0 && (
           <div style={{
             background: 'rgba(255,255,255,0.1)',
             borderRadius: '20px',
@@ -1003,7 +614,7 @@ function App() {
               borderRadius: '10px',
               padding: '15px'
             }}>
-              {persistentData.purchaseHistory
+              {purchaseHistory
                 .slice()
                 .reverse()
                 .map((record, index) => (
@@ -1012,7 +623,7 @@ function App() {
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     padding: '8px 0',
-                    borderBottom: index < persistentData.purchaseHistory.length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                    borderBottom: index < purchaseHistory.length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none',
                     fontSize: '0.9rem'
                   }}>
                     <span>Plot {record.plotId}</span>
@@ -1026,26 +637,335 @@ function App() {
           </div>
         )}
       </div>
-
-      <style jsx>{`
-        @keyframes pulse {
-          0%, 100% { transform: scale(1); opacity: 1; }
-          50% { transform: scale(1.1); opacity: 0.8; }
-        }
-        
-        @keyframes bounce {
-          0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
-          40% { transform: translateY(-20px); }
-          60% { transform: translateY(-10px); }
-        }
-        
-        @keyframes loading {
-          0% { transform: translateX(-100%); }
-          100% { transform: translateX(300px); }
-        }
-      `}</style>
     </div>
   )
 }
 
-export default App
+export default App style={{ fontSize: '1.1rem', marginBottom: '8px' }}>
+                  <strong>Connected:</strong> {wallet.toString().slice(0, 8)}...{wallet.toString().slice(-8)}
+                </p>
+                <p style={{ margin: '5px 0' }}><strong>SOL:</strong> {balance.toFixed(4)} SOL</p>
+                <p style={{ margin: '5px 0' }}><strong>DEMPLAR:</strong> {demplarBalance.toFixed(2)} DEMPLAR</p>
+              </div>
+            ) : (
+              <p style={{ fontSize: '1.1rem' }}>Connect your wallet to start building</p>
+            )}
+          </div>
+          
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
+            {NETWORK === 'devnet' && wallet && (
+              <button 
+                onClick={requestAirdrop}
+                disabled={loading}
+                style={{
+                  background: loading ? 'rgba(255,255,255,0.3)' : '#ff9800',
+                  color: 'white',
+                  border: 'none',
+                  padding: '14px 20px',
+                  borderRadius: '10px',
+                  cursor: loading ? 'not-allowed' : 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold'
+                }}
+              >
+                {loading ? '⏳ Airdropping...' : '💰 Get Test SOL'}
+              </button>
+            )}
+            
+            <select 
+              value={paymentMethod} 
+              onChange={(e) => setPaymentMethod(e.target.value)}
+              style={{
+                padding: '12px 15px',
+                borderRadius: '10px',
+                border: 'none',
+                background: 'rgba(255,255,255,0.25)',
+                color: 'white',
+                fontSize: '14px'
+              }}
+            >
+              <option value="SOL" style={{ color: 'black' }}>Pay with SOL</option>
+              <option value="DEMPLAR" style={{ color: 'black' }}>Pay with DEMPLAR</option>
+            </select>
+            
+            {wallet ? (
+              <button 
+                onClick={disconnectWallet}
+                style={{
+                  background: '#ff4757',
+                  color: 'white',
+                  border: 'none',
+                  padding: '14px 22px',
+                  borderRadius: '10px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold'
+                }}
+              >
+                Disconnect
+              </button>
+            ) : (
+              <button 
+                onClick={connectWallet}
+                style={{
+                  background: '#2ed573',
+                  color: 'white',
+                  border: 'none',
+                  padding: '14px 22px',
+                  borderRadius: '10px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold'
+                }}
+              >
+                Connect Phantom
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Render all areas */}
+        {Object.entries(landData.areas)
+          .sort(([a], [b]) => parseInt(a) - parseInt(b))
+          .map(([areaNumber, areaData], index) => {
+            const areaNum = parseInt(areaNumber)
+            const theme = CLIMATE_THEMES[areaNum] || CLIMATE_THEMES[8]
+            const price = calculatePrice(areaNum)
+            const demplarPrice = calculateDemplarAmount(price)
+            const isCurrentArea = areaNum === landData.currentArea
+            const nextPlot = areaData.plots[areaData.nextAvailablePlot]
+
+            return (
+              <div 
+                key={areaNumber}
+                ref={isCurrentArea ? newAreaRef : null}
+                style={{ 
+                  marginBottom: '50px',
+                  opacity: 1,
+                  transform: 'translateY(0)'
+                }}
+              >
+                {/* Area Divider */}
+                {index > 0 && (
+                  <div style={{
+                    height: '4px',
+                    background: `linear-gradient(90deg, transparent, ${theme.accent}, transparent)`,
+                    marginBottom: '30px',
+                    borderRadius: '2px'
+                  }} />
+                )}
+
+                {/* Area Header */}
+                <div style={{ 
+                  background: `rgba(255,255,255,0.15)`,
+                  backdropFilter: 'blur(10px)',
+                  borderRadius: '20px', 
+                  padding: '25px', 
+                  marginBottom: '30px',
+                  textAlign: 'center',
+                  border: `2px solid ${theme.accent}`,
+                  position: 'relative'
+                }}>
+                  {areaData.completed && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '15px',
+                      right: '20px',
+                      background: '#2ed573',
+                      padding: '8px 15px',
+                      borderRadius: '20px',
+                      fontSize: '0.9rem',
+                      fontWeight: 'bold'
+                    }}>
+                      ✅ COMPLETED
+                    </div>
+                  )}
+                  
+                  <h2 style={{ margin: '0 0 15px 0', fontSize: '2.2rem' }}>
+                    {theme.emoji} Area {areaNumber} - {theme.name}
+                  </h2>
+                  <p style={{ fontSize: '1.1rem', opacity: 0.9, marginBottom: '15px' }}>
+                    {theme.description}
+                  </p>
+                  
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '40px', flexWrap: 'wrap' }}>
+                    <p style={{ fontSize: '1.1rem', margin: '5px 0' }}>
+                      <strong>SOL Price:</strong> {price.toFixed(4)} SOL
+                    </p>
+                    <p style={{ fontSize: '1.1rem', margin: '5px 0' }}>
+                      <strong>DEMPLAR Price:</strong> {demplarPrice.toFixed(2)} DEMPLAR
+                    </p>
+                  </div>
+                  
+                  <div style={{ marginTop: '15px' }}>
+                    <p style={{ opacity: 0.9 }}>
+                      Plots owned: {areaData.plots.filter(p => p.owned).length} / {areaData.plots.length}
+                    </p>
+                    {!areaData.completed && nextPlot && (
+                      <p style={{ fontSize: '1rem', color: '#ffeb3b', fontWeight: 'bold', marginTop: '8px' }}>
+                        🎯 Next available: Plot {nextPlot.id}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Land Grid */}
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                  gap: '20px',
+                  marginBottom: '30px'
+                }}>
+                  {areaData.plots.map((plot, plotIndex) => {
+                    const isNextAvailable = plotIndex === areaData.nextAvailablePlot && !areaData.completed
+                    const canPurchase = isNextAvailable && !plot.owned && wallet && !loading
+                    
+                    return (
+                      <div 
+                        key={plot.id}
+                        style={{
+                          background: plot.owned 
+                            ? 'rgba(255, 87, 87, 0.3)' 
+                            : isNextAvailable
+                              ? 'rgba(46, 213, 115, 0.3)'
+                              : 'rgba(128, 128, 128, 0.2)',
+                          border: plot.owned 
+                            ? '3px solid #ff5757' 
+                            : isNextAvailable
+                              ? `3px solid #2ed573`
+                              : '2px solid rgba(255,255,255,0.3)',
+                          borderRadius: '15px',
+                          padding: '20px',
+                          textAlign: 'center',
+                          backdropFilter: 'blur(10px)',
+                          transition: 'all 0.3s ease',
+                          cursor: canPurchase ? 'pointer' : 'default',
+                          position: 'relative'
+                        }}
+                      >
+                        {isNextAvailable && (
+                          <div style={{
+                            position: 'absolute',
+                            top: '-10px',
+                            right: '-10px',
+                            background: '#ffeb3b',
+                            color: '#000',
+                            borderRadius: '50%',
+                            width: '30px',
+                            height: '30px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '16px',
+                            fontWeight: 'bold'
+                          }}>
+                            🎯
+                          </div>
+                        )}
+                        
+                        <h3 style={{ margin: '0 0 15px 0', fontSize: '1.4rem' }}>
+                          {theme.emoji} Plot {plot.id}
+                        </h3>
+                        
+                        {plot.owned ? (
+                          <div>
+                            <p style={{ color: '#ff6b6b', fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '10px' }}>
+                              OWNED
+                            </p>
+                            <p style={{ fontSize: '0.85rem', opacity: 0.8, marginBottom: '8px' }}>
+                              Owner: {plot.owner?.slice(0, 6)}...{plot.owner?.slice(-4)}
+                            </p>
+                            <p style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '5px' }}>
+                              Price: {plot.price?.toFixed(4)} {plot.paymentMethod}
+                            </p>
+                            <p style={{ fontSize: '0.8rem', opacity: 0.7 }}>
+                              {plot.purchaseTimestamp ? new Date(plot.purchaseTimestamp).toLocaleDateString() : 'N/A'}
+                            </p>
+                          </div>
+                        ) : isNextAvailable ? (
+                          <div>
+                            <p style={{ marginBottom: '15px', fontSize: '1.1rem' }}>
+                              <strong style={{ color: '#2ed573' }}>NEXT AVAILABLE</strong>
+                            </p>
+                            <p style={{ marginBottom: '15px', fontSize: '1rem' }}>
+                              <strong>
+                                {paymentMethod === 'SOL' 
+                                  ? `${price.toFixed(4)} SOL` 
+                                  : `${demplarPrice.toFixed(2)} DEMPLAR`}
+                              </strong>
+                            </p>
+                            <button
+                              onClick={() => purchaseLand(plot.id)}
+                              disabled={!canPurchase}
+                              style={{
+                                background: canPurchase 
+                                  ? 'linear-gradient(45deg, #2ed573, #26d068)' 
+                                  : 'rgba(255,255,255,0.3)',
+                                color: 'white',
+                                border: 'none',
+                                padding: '14px 24px',
+                                borderRadius: '10px',
+                                cursor: canPurchase ? 'pointer' : 'not-allowed',
+                                fontSize: '15px',
+                                fontWeight: 'bold',
+                                width: '100%',
+                                transition: 'all 0.2s'
+                              }}
+                            >
+                              {loading ? '⏳ Processing...' : `🛒 Buy with ${paymentMethod}`}
+                            </button>
+                          </div>
+                        ) : (
+                          <div>
+                            <p style={{ color: '#888', fontWeight: 'bold', fontSize: '1rem', marginBottom: '10px' }}>
+                              LOCKED
+                            </p>
+                            <p style={{ fontSize: '0.9rem', opacity: 0.7, marginBottom: '15px' }}>
+                              Purchase previous plots first
+                            </p>
+                            <button
+                              disabled={true}
+                              style={{
+                                background: 'rgba(255,255,255,0.1)',
+                                color: 'rgba(255,255,255,0.5)',
+                                border: '1px solid rgba(255,255,255,0.2)',
+                                padding: '14px 24px',
+                                borderRadius: '10px',
+                                cursor: 'not-allowed',
+                                fontSize: '14px',
+                                fontWeight: 'bold',
+                                width: '100%'
+                              }}
+                            >
+                              🔒 Locked
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )
+          })}
+
+        {/* New Area Animation */}
+        {animatingNewArea && (
+          <div style={{
+            textAlign: 'center',
+            padding: '40px',
+            marginBottom: '30px',
+            background: 'rgba(255,255,255,0.1)',
+            borderRadius: '20px',
+            backdropFilter: 'blur(10px)'
+          }}>
+            <div style={{
+              fontSize: '3rem',
+              marginBottom: '20px'
+            }}>
+              🎉
+            </div>
+            <h2 style={{ marginBottom: '15px', color: '#2ed573' }}>
+              Area Completed!
+            </h2>
+            <p
