@@ -1,29 +1,74 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js'
 import { TOKEN_PROGRAM_ID, getAssociatedTokenAddress, createTransferInstruction } from '@solana/spl-token'
 
 // Network configuration
-const NETWORK = import.meta.env.VITE_NETWORK || 'devnet' // 'mainnet' or 'devnet'
+const NETWORK = 'devnet' // Change to 'mainnet' for production
 const RPC_URLS = {
   mainnet: 'https://api.mainnet-beta.solana.com',
   devnet: 'https://api.devnet.solana.com'
 }
 
-// DEMPLAR token mint - use different addresses for different networks
+// Token and treasury configuration
 const TOKEN_MINTS = {
-  mainnet: import.meta.env.VITE_MAINNET_TOKEN_MINT || '4kU3B6hvnMEWNZadKWkQatky8fBgDLt7R9HwoysVpump',
-  devnet: import.meta.env.VITE_DEVNET_TOKEN_MINT || 'So11111111111111111111111111111111111111112' // Wrapped SOL for testing
+  mainnet: '4kU3B6hvnMEWNZadKWkQatky8fBgDLt7R9HwoysVpump',
+  devnet: 'So11111111111111111111111111111111111111112'
 }
 
-// Treasury wallets for different networks
 const TREASURY_WALLETS = {
-  mainnet: import.meta.env.VITE_MAINNET_TREASURY || 'YourMainnetTreasuryWalletHere',
-  devnet: import.meta.env.VITE_DEVNET_TREASURY || 'YourDevnetTreasuryWalletHere'
+  mainnet: 'YourMainnetTreasuryWalletHere',
+  devnet: 'YourDevnetTreasuryWalletHere'
 }
 
 const DEMPLAR_MINT = new PublicKey(TOKEN_MINTS[NETWORK])
 const TREASURY_WALLET = new PublicKey(TREASURY_WALLETS[NETWORK])
 const SOLANA_RPC_URL = RPC_URLS[NETWORK]
+
+// Climate themes for different areas
+const CLIMATE_THEMES = {
+  8: {
+    name: "Temperate Forests",
+    emoji: "🌲",
+    background: "linear-gradient(135deg, #2d5016 0%, #4a7c59 50%, #6b8e23 100%)",
+    accent: "#4a7c59",
+    description: "Lush green forests with towering pines"
+  },
+  9: {
+    name: "Desert Oasis", 
+    emoji: "🏜️",
+    background: "linear-gradient(135deg, #daa520 0%, #cd853f 50%, #f4a460 100%)",
+    accent: "#cd853f",
+    description: "Golden sands with hidden water sources"
+  },
+  10: {
+    name: "Arctic Tundra",
+    emoji: "❄️", 
+    background: "linear-gradient(135deg, #87ceeb 0%, #b0e0e6 50%, #f0f8ff 100%)",
+    accent: "#87ceeb",
+    description: "Frozen landscapes with crystal formations"
+  },
+  11: {
+    name: "Volcanic Peaks",
+    emoji: "🌋",
+    background: "linear-gradient(135deg, #8b0000 0%, #ff4500 50%, #ff6347 100%)", 
+    accent: "#ff4500",
+    description: "Fiery mountains with lava flows"
+  },
+  12: {
+    name: "Ocean Depths",
+    emoji: "🌊",
+    background: "linear-gradient(135deg, #000080 0%, #006994 50%, #4682b4 100%)",
+    accent: "#006994", 
+    description: "Deep underwater realms with coral reefs"
+  },
+  13: {
+    name: "Sky Islands",
+    emoji: "☁️",
+    background: "linear-gradient(135deg, #87ceeb 0%, #dda0dd 50%, #ffd1dc 100%)",
+    accent: "#dda0dd",
+    description: "Floating islands among the clouds"
+  }
+}
 
 function App() {
   const [connection] = useState(new Connection(SOLANA_RPC_URL))
@@ -31,54 +76,57 @@ function App() {
   const [balance, setBalance] = useState(0)
   const [demplarBalance, setDemplarBalance] = useState(0)
   const [solToUsd, setSolToUsd] = useState(0)
-  const [landData, setLandData] = useState({
-    currentArea: 8,
-    availablePlots: Array.from({length: 9}, (_, i) => ({ 
-      area: 8, 
-      plot: i + 2, 
-      id: `8-${i + 2}`,
-      owned: false,
-      owner: null
-    }))
-  })
   const [loading, setLoading] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState('SOL')
+  const [animatingNewArea, setAnimatingNewArea] = useState(false)
+  
+  // Enhanced land data structure to track all areas and their plots
+  const [landData, setLandData] = useState({
+    areas: {
+      8: {
+        plots: Array.from({length: 9}, (_, i) => ({
+          area: 8,
+          plotNumber: i + 2, // Plots 2-10
+          id: `8-${i + 2}`,
+          owned: false,
+          owner: null,
+          transactionSignature: null,
+          purchaseTimestamp: null,
+          price: null,
+          paymentMethod: null
+        })),
+        completed: false,
+        nextAvailablePlot: 0 // Index of next plot that can be purchased
+      }
+    },
+    currentArea: 8,
+    maxAreaReached: 8
+  })
 
-  // Calculate price based on area (much lower for devnet testing)
+  const newAreaRef = useRef(null)
+
+  // Calculate price based on area
   const calculatePrice = (area) => {
-    const basePrice = (area - 1) * 0.1 + 0.1 // Area 8 = 0.8 SOL, Area 9 = 0.9 SOL, etc.
-    // Use much smaller amounts for devnet testing
-    return NETWORK === 'devnet' ? basePrice * 0.01 : basePrice // 0.008 SOL for devnet Area 8
+    const basePrice = (area - 1) * 0.1 + 0.1
+    return NETWORK === 'devnet' ? basePrice * 0.01 : basePrice
   }
 
-  const currentPrice = calculatePrice(landData.currentArea)
-
-  // Airdrop SOL for devnet testing
-  const requestAirdrop = async () => {
-    if (NETWORK !== 'devnet' || !wallet) {
-      alert('Airdrop only available on devnet!')
-      return
+  // Load persistent data from localStorage equivalent (in-memory for artifacts)
+  const [persistentData, setPersistentData] = useState(() => {
+    // In a real app, this would load from localStorage or blockchain
+    return {
+      purchaseHistory: [],
+      areaCompletions: []
     }
+  })
 
-    try {
-      setLoading(true)
-      const signature = await connection.requestAirdrop(wallet, 1 * LAMPORTS_PER_SOL)
-      await connection.confirmTransaction(signature, 'confirmed')
-      
-      // Update balance
-      const newBalance = await connection.getBalance(wallet)
-      setBalance(newBalance / LAMPORTS_PER_SOL)
-      
-      alert('Airdropped 1 SOL for testing!')
-    } catch (error) {
-      console.error('Airdrop failed:', error)
-      alert('Airdrop failed. You may have reached the rate limit.')
-    } finally {
-      setLoading(false)
-    }
+  // Save to persistent storage
+  const savePersistentData = (newData) => {
+    setPersistentData(newData)
+    // In a real app: localStorage.setItem('landMarketplaceData', JSON.stringify(newData))
   }
 
-  // Fetch SOL to USD price
+  // Fetch SOL price
   const fetchSolPrice = async () => {
     try {
       const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd')
@@ -86,7 +134,7 @@ function App() {
       setSolToUsd(data.solana.usd)
     } catch (error) {
       console.error('Failed to fetch SOL price:', error)
-      setSolToUsd(100) // Fallback price
+      setSolToUsd(100)
     }
   }
 
@@ -97,11 +145,9 @@ function App() {
         DEMPLAR_MINT,
         walletAddress
       )
-      
       const tokenAccount = await connection.getTokenAccountBalance(associatedTokenAddress)
       return tokenAccount.value.uiAmount || 0
     } catch (error) {
-      console.log('No DEMPLAR token account found or error:', error)
       return 0
     }
   }
@@ -117,11 +163,9 @@ function App() {
       const response = await window.solana.connect()
       setWallet(response.publicKey)
       
-      // Get SOL balance
       const balance = await connection.getBalance(response.publicKey)
       setBalance(balance / LAMPORTS_PER_SOL)
 
-      // Get DEMPLAR balance
       const demplarBal = await getDemplarBalance(response.publicKey)
       setDemplarBalance(demplarBal)
       
@@ -140,32 +184,95 @@ function App() {
     }
   }
 
+  // Request airdrop for devnet
+  const requestAirdrop = async () => {
+    if (NETWORK !== 'devnet' || !wallet) {
+      alert('Airdrop only available on devnet!')
+      return
+    }
+
+    try {
+      setLoading(true)
+      const signature = await connection.requestAirdrop(wallet, 1 * LAMPORTS_PER_SOL)
+      await connection.confirmTransaction(signature, 'confirmed')
+      
+      const newBalance = await connection.getBalance(wallet)
+      setBalance(newBalance / LAMPORTS_PER_SOL)
+      
+      alert('Airdropped 1 SOL for testing!')
+    } catch (error) {
+      console.error('Airdrop failed:', error)
+      alert('Airdrop failed. You may have reached the rate limit.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   // Calculate DEMPLAR equivalent
   const calculateDemplarAmount = (solAmount) => {
     const usdAmount = solAmount * solToUsd
-    // For devnet testing, use 1:1 ratio (1 DEMPLAR = 1 USD)
     return usdAmount
   }
 
-  // Purchase land plot
+  // Create new area when current area is completed
+  const createNewArea = (areaNumber) => {
+    const newArea = {
+      plots: Array.from({length: 10}, (_, i) => ({
+        area: areaNumber,
+        plotNumber: i + 1,
+        id: `${areaNumber}-${i + 1}`,
+        owned: false,
+        owner: null,
+        transactionSignature: null,
+        purchaseTimestamp: null,
+        price: null,
+        paymentMethod: null
+      })),
+      completed: false,
+      nextAvailablePlot: 0
+    }
+    
+    return newArea
+  }
+
+  // Purchase land plot (sequential only)
   const purchaseLand = async (plotId) => {
     if (!wallet) {
       alert('Please connect your wallet first!')
       return
     }
 
+    const [areaStr, plotStr] = plotId.split('-')
+    const area = parseInt(areaStr)
+    const plotNumber = parseInt(plotStr)
+    
+    const areaData = landData.areas[area]
+    if (!areaData) {
+      alert('Invalid area!')
+      return
+    }
+
+    const plotIndex = areaData.plots.findIndex(p => p.id === plotId)
+    const plot = areaData.plots[plotIndex]
+    
+    if (!plot || plot.owned) {
+      alert('Plot not available!')
+      return
+    }
+
+    // Check if this is the next sequential plot
+    if (plotIndex !== areaData.nextAvailablePlot) {
+      const nextPlot = areaData.plots[areaData.nextAvailablePlot]
+      alert(`You must purchase plots in order! Next available plot is ${nextPlot.id}`)
+      return
+    }
+
     setLoading(true)
     try {
-      const plot = landData.availablePlots.find(p => p.id === plotId)
-      if (!plot || plot.owned) {
-        alert('Plot not available!')
-        return
-      }
-
+      const currentPrice = calculatePrice(area)
       let transaction = new Transaction()
       
       if (paymentMethod === 'SOL') {
-        // SOL payment
         const lamports = currentPrice * LAMPORTS_PER_SOL
         
         if (balance < currentPrice) {
@@ -182,7 +289,6 @@ function App() {
           })
         )
       } else {
-        // DEMPLAR token payment
         const demplarAmount = calculateDemplarAmount(currentPrice)
         
         if (demplarBalance < demplarAmount) {
@@ -192,19 +298,9 @@ function App() {
         }
 
         try {
-          // Get user's DEMPLAR token account
-          const userTokenAccount = await getAssociatedTokenAddress(
-            DEMPLAR_MINT,
-            wallet
-          )
-
-          // Get treasury's DEMPLAR token account
-          const treasuryTokenAccount = await getAssociatedTokenAddress(
-            DEMPLAR_MINT,
-            TREASURY_WALLET
-          )
-
-          // Convert DEMPLAR amount to token units (assuming 9 decimals for wrapped SOL on devnet)
+          const userTokenAccount = await getAssociatedTokenAddress(DEMPLAR_MINT, wallet)
+          const treasuryTokenAccount = await getAssociatedTokenAddress(DEMPLAR_MINT, TREASURY_WALLET)
+          
           const decimals = NETWORK === 'devnet' ? 9 : 6
           const tokenAmount = Math.floor(demplarAmount * Math.pow(10, decimals))
 
@@ -225,47 +321,86 @@ function App() {
         }
       }
 
-      // Get recent blockhash
       const { blockhash } = await connection.getLatestBlockhash()
       transaction.recentBlockhash = blockhash
       transaction.feePayer = wallet
 
-      // Sign and send transaction
       const signedTransaction = await window.solana.signTransaction(transaction)
       const signature = await connection.sendRawTransaction(signedTransaction.serialize())
       
-      // Confirm transaction
       await connection.confirmTransaction(signature, 'confirmed')
 
-      // Update land data
+      // Update land data with purchase info
       setLandData(prev => {
-        const newAvailablePlots = prev.availablePlots.map(p => 
-          p.id === plotId 
-            ? { ...p, owned: true, owner: wallet.toString() }
-            : p
-        )
+        const newLandData = { ...prev }
+        const updatedArea = { ...newLandData.areas[area] }
         
-        // Check if area is complete
-        const allOwned = newAvailablePlots.every(p => p.owned)
-        let updatedData = { ...prev, availablePlots: newAvailablePlots }
-        
-        if (allOwned) {
-          // Move to next area
-          const nextArea = prev.currentArea + 1
-          updatedData = {
-            currentArea: nextArea,
-            availablePlots: Array.from({length: 10}, (_, i) => ({
-              area: nextArea,
-              plot: i + 1,
-              id: `${nextArea}-${i + 1}`,
-              owned: false,
-              owner: null
-            }))
-          }
+        // Update the purchased plot
+        updatedArea.plots[plotIndex] = {
+          ...plot,
+          owned: true,
+          owner: wallet.toString(),
+          transactionSignature: signature,
+          purchaseTimestamp: Date.now(),
+          price: currentPrice,
+          paymentMethod: paymentMethod
         }
         
-        return updatedData
+        // Move to next available plot
+        updatedArea.nextAvailablePlot = plotIndex + 1
+        
+        // Check if area is completed
+        if (updatedArea.nextAvailablePlot >= updatedArea.plots.length) {
+          updatedArea.completed = true
+          
+          // Create next area with animation
+          const nextAreaNumber = area + 1
+          setAnimatingNewArea(true)
+          
+          // Add new area after animation delay
+          setTimeout(() => {
+            setLandData(prevData => ({
+              ...prevData,
+              areas: {
+                ...prevData.areas,
+                [nextAreaNumber]: createNewArea(nextAreaNumber)
+              },
+              currentArea: nextAreaNumber,
+              maxAreaReached: Math.max(prevData.maxAreaReached, nextAreaNumber)
+            }))
+            
+            setAnimatingNewArea(false)
+            
+            // Scroll to new area
+            setTimeout(() => {
+              if (newAreaRef.current) {
+                newAreaRef.current.scrollIntoView({ behavior: 'smooth' })
+              }
+            }, 100)
+          }, 2000)
+        }
+        
+        newLandData.areas[area] = updatedArea
+        return newLandData
       })
+
+      // Save to persistent storage
+      const purchaseRecord = {
+        plotId,
+        area,
+        plotNumber,
+        owner: wallet.toString(),
+        signature,
+        timestamp: Date.now(),
+        price: currentPrice,
+        paymentMethod
+      }
+      
+      const newPersistentData = {
+        ...persistentData,
+        purchaseHistory: [...persistentData.purchaseHistory, purchaseRecord]
+      }
+      savePersistentData(newPersistentData)
 
       // Update balances
       if (paymentMethod === 'SOL') {
@@ -276,7 +411,7 @@ function App() {
         setDemplarBalance(newDemplarBalance)
       }
 
-      alert(`Successfully purchased plot ${plotId} with ${paymentMethod}! Transaction: ${signature}`)
+      alert(`Successfully purchased plot ${plotId}! Transaction: ${signature}`)
       
     } catch (error) {
       console.error('Transaction failed:', error)
@@ -286,7 +421,7 @@ function App() {
     }
   }
 
-  // Auto-connect wallet and fetch price on page load
+  // Auto-connect wallet on load
   useEffect(() => {
     fetchSolPrice()
     
@@ -308,90 +443,109 @@ function App() {
     autoConnect()
   }, [connection])
 
-  const demplarEquivalent = calculateDemplarAmount(currentPrice)
+  // Get current theme
+  const getCurrentTheme = () => {
+    return CLIMATE_THEMES[landData.currentArea] || CLIMATE_THEMES[8]
+  }
+
+  const currentTheme = getCurrentTheme()
 
   return (
     <div style={{ 
       minHeight: '100vh', 
-      background: NETWORK === 'devnet' 
-        ? 'linear-gradient(135deg, #ff9a56 0%, #ff6b95 100%)' 
-        : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+      background: currentTheme.background,
       padding: '20px',
-      fontFamily: 'Arial, sans-serif'
+      fontFamily: 'Arial, sans-serif',
+      transition: 'background 3s ease-in-out'
     }}>
       <div style={{ maxWidth: '1200px', margin: '0 auto', color: 'white' }}>
         
         {/* Network Banner */}
         <div style={{ 
           background: NETWORK === 'devnet' ? 'rgba(255, 152, 0, 0.3)' : 'rgba(0, 0, 0, 0.2)', 
-          padding: '10px', 
-          borderRadius: '10px', 
+          padding: '15px', 
+          borderRadius: '15px', 
           textAlign: 'center', 
-          marginBottom: '20px',
-          border: NETWORK === 'devnet' ? '2px solid #ff9800' : '2px solid rgba(255,255,255,0.2)'
+          marginBottom: '30px',
+          border: `2px solid ${currentTheme.accent}`,
+          backdropFilter: 'blur(10px)'
         }}>
-          <h3 style={{ margin: 0 }}>
-            {NETWORK === 'devnet' ? '🧪 DEVNET - TESTING MODE' : '🌐 MAINNET - LIVE'}
+          <h3 style={{ margin: 0, fontSize: '1.5rem' }}>
+            {currentTheme.emoji} {currentTheme.name} - {NETWORK.toUpperCase()}
           </h3>
-          <p style={{ margin: '5px 0', fontSize: '0.9rem' }}>
+          <p style={{ margin: '8px 0', fontSize: '1rem', opacity: 0.9 }}>
+            {currentTheme.description}
+          </p>
+          <p style={{ margin: '5px 0', fontSize: '0.9rem', opacity: 0.7 }}>
             {NETWORK === 'devnet' 
-              ? 'Safe testing environment with free SOL airdrops' 
-              : 'Live Solana mainnet - real transactions'}
+              ? 'Testing environment with reduced prices' 
+              : 'Live Solana mainnet'}
           </p>
         </div>
 
         {/* Header */}
         <div style={{ textAlign: 'center', marginBottom: '40px' }}>
-          <h1 style={{ fontSize: '3rem', marginBottom: '10px', textShadow: '2px 2px 4px rgba(0,0,0,0.3)' }}>
-            🏞️ Solana Land Marketplace
+          <h1 style={{ 
+            fontSize: '3.5rem', 
+            marginBottom: '15px', 
+            textShadow: '3px 3px 6px rgba(0,0,0,0.5)',
+            background: 'linear-gradient(45deg, #fff, #f0f0f0)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent'
+          }}>
+            🏞️ Sequential Land Empire
           </h1>
-          <p style={{ fontSize: '1.2rem', opacity: 0.9 }}>
-            Own virtual land on the Solana blockchain
+          <p style={{ fontSize: '1.3rem', opacity: 0.9, marginBottom: '10px' }}>
+            Build your empire one plot at a time - Sequential purchasing required
           </p>
           <p style={{ fontSize: '1rem', opacity: 0.7 }}>
-            SOL Price: ${solToUsd.toFixed(2)} USD | Network: {NETWORK.toUpperCase()}
+            SOL: ${solToUsd.toFixed(2)} USD | Network: {NETWORK.toUpperCase()}
           </p>
         </div>
 
         {/* Wallet Section */}
         <div style={{ 
-          background: 'rgba(255,255,255,0.1)', 
-          backdropFilter: 'blur(10px)',
-          borderRadius: '15px', 
-          padding: '20px', 
-          marginBottom: '30px',
+          background: 'rgba(255,255,255,0.15)', 
+          backdropFilter: 'blur(15px)',
+          borderRadius: '20px', 
+          padding: '25px', 
+          marginBottom: '40px',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
           flexWrap: 'wrap',
-          gap: '15px'
+          gap: '20px',
+          border: `2px solid ${currentTheme.accent}40`
         }}>
           <div>
             {wallet ? (
               <div>
-                <p><strong>Connected:</strong> {wallet.toString().slice(0, 8)}...{wallet.toString().slice(-8)}</p>
-                <p><strong>SOL Balance:</strong> {balance.toFixed(4)} SOL</p>
-                <p><strong>DEMPLAR Balance:</strong> {demplarBalance.toFixed(2)} DEMPLAR</p>
+                <p style={{ fontSize: '1.1rem', marginBottom: '8px' }}>
+                  <strong>Connected:</strong> {wallet.toString().slice(0, 8)}...{wallet.toString().slice(-8)}
+                </p>
+                <p style={{ margin: '5px 0' }}><strong>SOL:</strong> {balance.toFixed(4)} SOL</p>
+                <p style={{ margin: '5px 0' }}><strong>DEMPLAR:</strong> {demplarBalance.toFixed(2)} DEMPLAR</p>
               </div>
             ) : (
-              <p>Connect your wallet to purchase land</p>
+              <p style={{ fontSize: '1.1rem' }}>Connect your wallet to start building your land empire</p>
             )}
           </div>
           
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
             {NETWORK === 'devnet' && wallet && (
               <button 
                 onClick={requestAirdrop}
                 disabled={loading}
                 style={{
-                  background: '#ff9800',
+                  background: loading ? 'rgba(255,255,255,0.3)' : '#ff9800',
                   color: 'white',
                   border: 'none',
-                  padding: '12px 20px',
-                  borderRadius: '8px',
+                  padding: '14px 20px',
+                  borderRadius: '10px',
                   cursor: loading ? 'not-allowed' : 'pointer',
                   fontSize: '14px',
-                  fontWeight: 'bold'
+                  fontWeight: 'bold',
+                  transition: 'all 0.2s'
                 }}
               >
                 {loading ? '⏳ Airdropping...' : '💰 Get Test SOL'}
@@ -402,12 +556,13 @@ function App() {
               value={paymentMethod} 
               onChange={(e) => setPaymentMethod(e.target.value)}
               style={{
-                padding: '10px',
-                borderRadius: '8px',
+                padding: '12px 15px',
+                borderRadius: '10px',
                 border: 'none',
-                background: 'rgba(255,255,255,0.2)',
+                background: 'rgba(255,255,255,0.25)',
                 color: 'white',
-                fontSize: '14px'
+                fontSize: '14px',
+                cursor: 'pointer'
               }}
             >
               <option value="SOL" style={{ color: 'black' }}>Pay with SOL</option>
@@ -421,11 +576,12 @@ function App() {
                   background: '#ff4757',
                   color: 'white',
                   border: 'none',
-                  padding: '12px 20px',
-                  borderRadius: '8px',
+                  padding: '14px 22px',
+                  borderRadius: '10px',
                   cursor: 'pointer',
                   fontSize: '14px',
-                  fontWeight: 'bold'
+                  fontWeight: 'bold',
+                  transition: 'all 0.2s'
                 }}
               >
                 Disconnect
@@ -437,11 +593,12 @@ function App() {
                   background: '#2ed573',
                   color: 'white',
                   border: 'none',
-                  padding: '12px 20px',
-                  borderRadius: '8px',
+                  padding: '14px 22px',
+                  borderRadius: '10px',
                   cursor: 'pointer',
                   fontSize: '14px',
-                  fontWeight: 'bold'
+                  fontWeight: 'bold',
+                  transition: 'all 0.2s'
                 }}
               >
                 Connect Phantom
@@ -450,143 +607,445 @@ function App() {
           </div>
         </div>
 
-        {/* Current Area Info */}
-        <div style={{ 
-          background: 'rgba(255,255,255,0.15)', 
-          borderRadius: '15px', 
-          padding: '20px', 
-          marginBottom: '30px',
-          textAlign: 'center'
-        }}>
-          <h2 style={{ margin: '0 0 10px 0' }}>Current Area: {landData.currentArea}</h2>
-          <div style={{ display: 'flex', justifyContent: 'center', gap: '40px', flexWrap: 'wrap' }}>
-            <p style={{ fontSize: '1.1rem', margin: '5px 0' }}>
-              <strong>SOL Price:</strong> {currentPrice} SOL
-              {NETWORK === 'devnet' && <span style={{ fontSize: '0.8rem' }}> (1% of mainnet)</span>}
-            </p>
-            <p style={{ fontSize: '1.1rem', margin: '5px 0' }}>
-              <strong>DEMPLAR Price:</strong> {demplarEquivalent.toFixed(2)} DEMPLAR
-            </p>
-          </div>
-          <p style={{ opacity: 0.8 }}>
-            Available plots: {landData.availablePlots.filter(p => !p.owned).length} / {landData.availablePlots.length}
-          </p>
-        </div>
+        {/* Render all areas */}
+        {Object.entries(landData.areas)
+          .sort(([a], [b]) => parseInt(a) - parseInt(b))
+          .map(([areaNumber, areaData], index) => {
+            const areaNum = parseInt(areaNumber)
+            const theme = CLIMATE_THEMES[areaNum] || CLIMATE_THEMES[8]
+            const price = calculatePrice(areaNum)
+            const demplarPrice = calculateDemplarAmount(price)
+            const isCurrentArea = areaNum === landData.currentArea
+            const nextPlot = areaData.plots[areaData.nextAvailablePlot]
 
-        {/* Land Grid */}
-        <div style={{ 
-          display: 'grid', 
-          gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
-          gap: '20px',
-          marginBottom: '30px'
-        }}>
-          {landData.availablePlots.map(plot => (
-            <div 
-              key={plot.id}
-              style={{
-                background: plot.owned 
-                  ? 'rgba(255, 87, 87, 0.2)' 
-                  : 'rgba(46, 213, 115, 0.2)',
-                border: plot.owned 
-                  ? '2px solid #ff5757' 
-                  : '2px solid #2ed573',
-                borderRadius: '15px',
-                padding: '20px',
-                textAlign: 'center',
-                backdropFilter: 'blur(5px)',
-                transition: 'transform 0.2s, box-shadow 0.2s',
-                cursor: plot.owned ? 'not-allowed' : 'pointer'
-              }}
-              onMouseEnter={(e) => {
-                if (!plot.owned) {
-                  e.target.style.transform = 'translateY(-5px)'
-                  e.target.style.boxShadow = '0 10px 25px rgba(0,0,0,0.2)'
-                }
-              }}
-              onMouseLeave={(e) => {
-                e.target.style.transform = 'translateY(0)'
-                e.target.style.boxShadow = 'none'
-              }}
-            >
-              <h3 style={{ margin: '0 0 15px 0', fontSize: '1.4rem' }}>
-                📍 Plot {plot.id}
-              </h3>
-              
-              {plot.owned ? (
-                <div>
-                  <p style={{ color: '#ff6b6b', fontWeight: 'bold' }}>OWNED</p>
-                  <p style={{ fontSize: '0.8rem', opacity: 0.7 }}>
-                    Owner: {plot.owner?.slice(0, 6)}...{plot.owner?.slice(-4)}
+            return (
+              <div 
+                key={areaNumber}
+                ref={isCurrentArea ? newAreaRef : null}
+                style={{ 
+                  marginBottom: '50px',
+                  opacity: isCurrentArea && animatingNewArea ? 0 : 1,
+                  transform: isCurrentArea && animatingNewArea ? 'translateY(50px)' : 'translateY(0)',
+                  transition: 'all 2s ease-in-out'
+                }}
+              >
+                {/* Area Divider */}
+                {index > 0 && (
+                  <div style={{
+                    height: '4px',
+                    background: `linear-gradient(90deg, transparent, ${theme.accent}, transparent)`,
+                    marginBottom: '30px',
+                    borderRadius: '2px'
+                  }} />
+                )}
+
+                {/* Area Header */}
+                <div style={{ 
+                  background: `linear-gradient(135deg, ${theme.accent}40, ${theme.accent}20)`,
+                  backdropFilter: 'blur(10px)',
+                  borderRadius: '20px', 
+                  padding: '25px', 
+                  marginBottom: '30px',
+                  textAlign: 'center',
+                  border: `2px solid ${theme.accent}`,
+                  position: 'relative',
+                  overflow: 'hidden'
+                }}>
+                  {areaData.completed && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '15px',
+                      right: '20px',
+                      background: '#2ed573',
+                      padding: '8px 15px',
+                      borderRadius: '20px',
+                      fontSize: '0.9rem',
+                      fontWeight: 'bold'
+                    }}>
+                      ✅ COMPLETED
+                    </div>
+                  )}
+                  
+                  <h2 style={{ margin: '0 0 15px 0', fontSize: '2.2rem' }}>
+                    {theme.emoji} Area {areaNumber} - {theme.name}
+                  </h2>
+                  <p style={{ fontSize: '1.1rem', opacity: 0.9, marginBottom: '15px' }}>
+                    {theme.description}
                   </p>
+                  
+                  <div style={{ display: 'flex', justifyContent: 'center', gap: '40px', flexWrap: 'wrap' }}>
+                    <p style={{ fontSize: '1.1rem', margin: '5px 0' }}>
+                      <strong>SOL Price:</strong> {price.toFixed(4)} SOL
+                    </p>
+                    <p style={{ fontSize: '1.1rem', margin: '5px 0' }}>
+                      <strong>DEMPLAR Price:</strong> {demplarPrice.toFixed(2)} DEMPLAR
+                    </p>
+                  </div>
+                  
+                  <div style={{ marginTop: '15px' }}>
+                    <p style={{ opacity: 0.9 }}>
+                      Plots owned: {areaData.plots.filter(p => p.owned).length} / {areaData.plots.length}
+                    </p>
+                    {!areaData.completed && nextPlot && (
+                      <p style={{ fontSize: '1rem', color: '#ffeb3b', fontWeight: 'bold', marginTop: '8px' }}>
+                        🎯 Next available: Plot {nextPlot.id}
+                      </p>
+                    )}
+                  </div>
                 </div>
-              ) : (
-                <div>
-                  <p style={{ marginBottom: '15px' }}>
-                    <strong>
-                      {paymentMethod === 'SOL' 
-                        ? `${currentPrice} SOL` 
-                        : `${demplarEquivalent.toFixed(2)} DEMPLAR`}
-                    </strong>
-                  </p>
-                  <button
-                    onClick={() => purchaseLand(plot.id)}
-                    disabled={loading || !wallet}
-                    style={{
-                      background: loading || !wallet 
-                        ? 'rgba(255,255,255,0.3)' 
-                        : '#3742fa',
-                      color: 'white',
-                      border: 'none',
-                      padding: '12px 24px',
-                      borderRadius: '8px',
-                      cursor: loading || !wallet ? 'not-allowed' : 'pointer',
-                      fontSize: '14px',
-                      fontWeight: 'bold',
-                      width: '100%',
-                      transition: 'background 0.2s'
-                    }}
-                  >
-                    {loading ? '⏳ Processing...' : `🛒 Buy with ${paymentMethod}`}
-                  </button>
+
+                {/* Land Grid */}
+                <div style={{ 
+                  display: 'grid', 
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                  gap: '20px',
+                  marginBottom: '30px'
+                }}>
+                  {areaData.plots.map((plot, plotIndex) => {
+                    const isNextAvailable = plotIndex === areaData.nextAvailablePlot && !areaData.completed
+                    const canPurchase = isNextAvailable && !plot.owned && wallet && !loading
+                    
+                    return (
+                      <div 
+                        key={plot.id}
+                        style={{
+                          background: plot.owned 
+                            ? 'rgba(255, 87, 87, 0.3)' 
+                            : isNextAvailable
+                              ? 'rgba(46, 213, 115, 0.3)'
+                              : 'rgba(128, 128, 128, 0.2)',
+                          border: plot.owned 
+                            ? '3px solid #ff5757' 
+                            : isNextAvailable
+                              ? `3px solid #2ed573`
+                              : '2px solid rgba(255,255,255,0.3)',
+                          borderRadius: '15px',
+                          padding: '20px',
+                          textAlign: 'center',
+                          backdropFilter: 'blur(10px)',
+                          transition: 'all 0.3s ease',
+                          cursor: canPurchase ? 'pointer' : 'default',
+                          position: 'relative',
+                          boxShadow: isNextAvailable ? '0 0 20px rgba(46, 213, 115, 0.5)' : 'none'
+                        }}
+                        onMouseEnter={(e) => {
+                          if (canPurchase) {
+                            e.target.style.transform = 'translateY(-8px) scale(1.02)'
+                            e.target.style.boxShadow = '0 15px 35px rgba(0,0,0,0.3)'
+                          }
+                        }}
+                        onMouseLeave={(e) => {
+                          e.target.style.transform = 'translateY(0) scale(1)'
+                          e.target.style.boxShadow = isNextAvailable ? '0 0 20px rgba(46, 213, 115, 0.5)' : 'none'
+                        }}
+                      >
+                        {isNextAvailable && (
+                          <div style={{
+                            position: 'absolute',
+                            top: '-10px',
+                            right: '-10px',
+                            background: '#ffeb3b',
+                            color: '#000',
+                            borderRadius: '50%',
+                            width: '30px',
+                            height: '30px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '16px',
+                            fontWeight: 'bold',
+                            animation: 'pulse 2s infinite'
+                          }}>
+                            🎯
+                          </div>
+                        )}
+                        
+                        <h3 style={{ margin: '0 0 15px 0', fontSize: '1.4rem' }}>
+                          {theme.emoji} Plot {plot.id}
+                        </h3>
+                        
+                        {plot.owned ? (
+                          <div>
+                            <p style={{ color: '#ff6b6b', fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '10px' }}>
+                              OWNED
+                            </p>
+                            <p style={{ fontSize: '0.85rem', opacity: 0.8, marginBottom: '8px' }}>
+                              Owner: {plot.owner?.slice(0, 6)}...{plot.owner?.slice(-4)}
+                            </p>
+                            <p style={{ fontSize: '0.8rem', opacity: 0.7, marginBottom: '5px' }}>
+                              Price: {plot.price?.toFixed(4)} {plot.paymentMethod}
+                            </p>
+                            <p style={{ fontSize: '0.8rem', opacity: 0.7 }}>
+                              {plot.purchaseTimestamp ? new Date(plot.purchaseTimestamp).toLocaleDateString() : 'N/A'}
+                            </p>
+                          </div>
+                        ) : isNextAvailable ? (
+                          <div>
+                            <p style={{ marginBottom: '15px', fontSize: '1.1rem' }}>
+                              <strong style={{ color: '#2ed573' }}>NEXT AVAILABLE</strong>
+                            </p>
+                            <p style={{ marginBottom: '15px', fontSize: '1rem' }}>
+                              <strong>
+                                {paymentMethod === 'SOL' 
+                                  ? `${price.toFixed(4)} SOL` 
+                                  : `${demplarPrice.toFixed(2)} DEMPLAR`}
+                              </strong>
+                            </p>
+                            <button
+                              onClick={() => purchaseLand(plot.id)}
+                              disabled={!canPurchase}
+                              style={{
+                                background: canPurchase 
+                                  ? 'linear-gradient(45deg, #2ed573, #26d068)' 
+                                  : 'rgba(255,255,255,0.3)',
+                                color: 'white',
+                                border: 'none',
+                                padding: '14px 24px',
+                                borderRadius: '10px',
+                                cursor: canPurchase ? 'pointer' : 'not-allowed',
+                                fontSize: '15px',
+                                fontWeight: 'bold',
+                                width: '100%',
+                                transition: 'all 0.2s',
+                                boxShadow: canPurchase ? '0 4px 15px rgba(46, 213, 115, 0.3)' : 'none'
+                              }}
+                            >
+                              {loading ? '⏳ Processing...' : `🛒 Buy with ${paymentMethod}`}
+                            </button>
+                          </div>
+                        ) : (
+                          <div>
+                            <p style={{ color: '#888', fontWeight: 'bold', fontSize: '1rem', marginBottom: '10px' }}>
+                              {plot.owned ? 'OWNED' : 'LOCKED'}
+                            </p>
+                            <p style={{ fontSize: '0.9rem', opacity: 0.7, marginBottom: '15px' }}>
+                              {plot.owned 
+                                ? `Purchased for ${price.toFixed(4)} SOL`
+                                : 'Purchase previous plots first'
+                              }
+                            </p>
+                            <button
+                              disabled={true}
+                              style={{
+                                background: 'rgba(255,255,255,0.1)',
+                                color: 'rgba(255,255,255,0.5)',
+                                border: '1px solid rgba(255,255,255,0.2)',
+                                padding: '14px 24px',
+                                borderRadius: '10px',
+                                cursor: 'not-allowed',
+                                fontSize: '14px',
+                                fontWeight: 'bold',
+                                width: '100%'
+                              }}
+                            >
+                              🔒 Locked
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
-              )}
+              </div>
+            )
+          })}
+
+        {/* New Area Animation */}
+        {animatingNewArea && (
+          <div style={{
+            textAlign: 'center',
+            padding: '40px',
+            marginBottom: '30px',
+            background: 'rgba(255,255,255,0.1)',
+            borderRadius: '20px',
+            backdropFilter: 'blur(10px)'
+          }}>
+            <div style={{
+              fontSize: '3rem',
+              marginBottom: '20px',
+              animation: 'bounce 1s infinite'
+            }}>
+              🎉
             </div>
-          ))}
-        </div>
+            <h2 style={{ marginBottom: '15px', color: '#2ed573' }}>
+              Area Completed!
+            </h2>
+            <p style={{ fontSize: '1.2rem', opacity: 0.9 }}>
+              New climate zone unlocking...
+            </p>
+            <div style={{
+              width: '200px',
+              height: '4px',
+              background: 'rgba(255,255,255,0.2)',
+              borderRadius: '2px',
+              margin: '20px auto',
+              overflow: 'hidden'
+            }}>
+              <div style={{
+                width: '100%',
+                height: '100%',
+                background: 'linear-gradient(90deg, #2ed573, #26d068)',
+                borderRadius: '2px',
+                animation: 'loading 2s ease-in-out'
+              }} />
+            </div>
+          </div>
+        )}
 
         {/* Info Section */}
         <div style={{ 
-          background: 'rgba(255,255,255,0.1)', 
-          borderRadius: '15px', 
-          padding: '20px',
-          textAlign: 'center'
+          background: 'rgba(255,255,255,0.15)', 
+          borderRadius: '20px', 
+          padding: '30px',
+          textAlign: 'center',
+          backdropFilter: 'blur(15px)',
+          border: `2px solid ${currentTheme.accent}40`
         }}>
-          <h3>How It Works</h3>
-          <p>
-            🏗️ Start in Area {landData.currentArea} with plots {landData.currentArea}-2 through {landData.currentArea}-{landData.currentArea + 2}
-          </p>
-          <p>
-            💰 Each area increases in price by 0.1 SOL (Area {landData.currentArea} = {currentPrice} SOL)
-          </p>
-          <p>
-            🔄 Once all plots in an area are purchased, the next area opens automatically
-          </p>
-          <p>
-            🪙 Pay with SOL or DEMPLAR tokens at USD equivalent rates
-          </p>
-          {NETWORK === 'devnet' && (
-            <p style={{ fontSize: '0.9rem', opacity: 0.8, color: '#ffeb3b' }}>
-              🧪 DEVNET: Prices are 1% of mainnet for easy testing. Use "Get Test SOL" for free devnet SOL!
+          <h3 style={{ fontSize: '1.8rem', marginBottom: '20px' }}>🏗️ How Sequential Land Empire Works</h3>
+          
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+            gap: '25px',
+            marginBottom: '25px'
+          }}>
+            <div style={{
+              background: 'rgba(255,255,255,0.1)',
+              padding: '20px',
+              borderRadius: '15px',
+              border: `1px solid ${currentTheme.accent}30`
+            }}>
+              <h4 style={{ marginBottom: '10px' }}>🎯 Sequential Purchasing</h4>
+              <p style={{ fontSize: '0.95rem', opacity: 0.9 }}>
+                You must purchase plots in order - no skipping ahead! This ensures fair progression for all players.
+              </p>
+            </div>
+            
+            <div style={{
+              background: 'rgba(255,255,255,0.1)',
+              padding: '20px',
+              borderRadius: '15px',
+              border: `1px solid ${currentTheme.accent}30`
+            }}>
+              <h4 style={{ marginBottom: '10px' }}>🌍 Climate Progression</h4>
+              <p style={{ fontSize: '0.95rem', opacity: 0.9 }}>
+                Each completed area unlocks a new climate zone with unique themes, from forests to arctic tundra.
+              </p>
+            </div>
+            
+            <div style={{
+              background: 'rgba(255,255,255,0.1)',
+              padding: '20px',
+              borderRadius: '15px',
+              border: `1px solid ${currentTheme.accent}30`
+            }}>
+              <h4 style={{ marginBottom: '10px' }}>📊 Blockchain Persistence</h4>
+              <p style={{ fontSize: '0.95rem', opacity: 0.9 }}>
+                All purchases are permanently recorded on Solana with transaction signatures and timestamps.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '20px' }}>
+            <p style={{ fontSize: '1rem', marginBottom: '8px' }}>
+              💰 Current Area {landData.currentArea} Price: {calculatePrice(landData.currentArea).toFixed(4)} SOL
             </p>
+            <p style={{ fontSize: '0.95rem', marginBottom: '8px' }}>
+              🪙 Pay with SOL or DEMPLAR tokens at current USD rates
+            </p>
+            <p style={{ fontSize: '0.95rem', marginBottom: '8px' }}>
+              🔄 Complete areas to unlock new climate zones automatically
+            </p>
+          </div>
+
+          {NETWORK === 'devnet' && (
+            <div style={{
+              background: 'rgba(255, 235, 59, 0.2)',
+              border: '2px solid #ffeb3b',
+              borderRadius: '15px',
+              padding: '20px',
+              marginBottom: '20px'
+            }}>
+              <p style={{ fontSize: '1rem', color: '#ffeb3b', fontWeight: 'bold', marginBottom: '10px' }}>
+                🧪 DEVNET TESTING MODE
+              </p>
+              <p style={{ fontSize: '0.95rem', opacity: 0.9 }}>
+                Prices are 1% of mainnet for easy testing. Use "Get Test SOL" for free devnet SOL!
+                All transactions are on Solana devnet and have no real value.
+              </p>
+            </div>
           )}
-          <p style={{ fontSize: '0.9rem', opacity: 0.8 }}>
-            Token: {DEMPLAR_MINT.toString()}<br/>
-            Network: {NETWORK} | Treasury: {TREASURY_WALLET.toString().slice(0, 8)}...
-          </p>
+          
+          <div style={{ fontSize: '0.85rem', opacity: 0.8, marginTop: '20px' }}>
+            <p style={{ marginBottom: '5px' }}>
+              Token: {DEMPLAR_MINT.toString().slice(0, 8)}...{DEMPLAR_MINT.toString().slice(-8)}
+            </p>
+            <p style={{ margin: 0 }}>
+              Treasury: {TREASURY_WALLET.toString().slice(0, 8)}...{TREASURY_WALLET.toString().slice(-8)}
+            </p>
+          </div>
         </div>
+
+        {/* Purchase History */}
+        {persistentData.purchaseHistory.length > 0 && (
+          <div style={{
+            background: 'rgba(255,255,255,0.1)',
+            borderRadius: '20px',
+            padding: '25px',
+            marginTop: '30px',
+            backdropFilter: 'blur(10px)'
+          }}>
+            <h3 style={{ marginBottom: '20px', textAlign: 'center' }}>📜 Your Purchase History</h3>
+            <div style={{
+              maxHeight: '200px',
+              overflowY: 'auto',
+              background: 'rgba(0,0,0,0.2)',
+              borderRadius: '10px',
+              padding: '15px'
+            }}>
+              {persistentData.purchaseHistory
+                .slice()
+                .reverse()
+                .map((record, index) => (
+                  <div key={index} style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                    padding: '8px 0',
+                    borderBottom: index < persistentData.purchaseHistory.length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                    fontSize: '0.9rem'
+                  }}>
+                    <span>Plot {record.plotId}</span>
+                    <span>{record.price?.toFixed(4)} {record.paymentMethod}</span>
+                    <span style={{ opacity: 0.7 }}>
+                      {new Date(record.timestamp).toLocaleDateString()}
+                    </span>
+                  </div>
+                ))}
+            </div>
+          </div>
+        )}
       </div>
+
+      <style jsx>{`
+        @keyframes pulse {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.1); opacity: 0.8; }
+        }
+        
+        @keyframes bounce {
+          0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+          40% { transform: translateY(-20px); }
+          60% { transform: translateY(-10px); }
+        }
+        
+        @keyframes loading {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(300px); }
+        }
+      `}</style>
     </div>
   )
 }
 
-export default App;
+export default App
