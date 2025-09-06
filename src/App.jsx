@@ -1,6 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js'
-import { TOKEN_PROGRAM_ID, getAssociatedTokenAddress, createTransferInstruction } from '@solana/spl-token'
 
 // Network configuration
 const NETWORK = 'devnet'
@@ -19,10 +17,6 @@ const TREASURY_WALLETS = {
   mainnet: 'YourMainnetTreasuryWalletHere',
   devnet: 'YourDevnetTreasuryWalletHere'
 }
-
-const DEMPLAR_MINT = new PublicKey(TOKEN_MINTS[NETWORK])
-const TREASURY_WALLET = new PublicKey(TREASURY_WALLETS[NETWORK])
-const SOLANA_RPC_URL = RPC_URLS[NETWORK]
 
 // Climate themes for different areas
 const CLIMATE_THEMES = {
@@ -57,7 +51,7 @@ const CLIMATE_THEMES = {
 }
 
 function App() {
-  const [connection] = useState(new Connection(SOLANA_RPC_URL))
+  const [connection, setConnection] = useState(null)
   const [wallet, setWallet] = useState(null)
   const [balance, setBalance] = useState(0)
   const [demplarBalance, setDemplarBalance] = useState(0)
@@ -65,6 +59,7 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [paymentMethod, setPaymentMethod] = useState('SOL')
   const [animatingNewArea, setAnimatingNewArea] = useState(false)
+  const [solanaLoaded, setSolanaLoaded] = useState(false)
   
   // Enhanced land data structure
   const [landData, setLandData] = useState({
@@ -94,6 +89,31 @@ function App() {
   // Purchase history state
   const [purchaseHistory, setPurchaseHistory] = useState([])
 
+  // Load Solana Web3.js dynamically
+  useEffect(() => {
+    const loadSolana = async () => {
+      try {
+        // Load Solana Web3.js from CDN
+        const script = document.createElement('script')
+        script.src = 'https://unpkg.com/@solana/web3.js@latest/lib/index.iife.min.js'
+        script.onload = () => {
+          setSolanaLoaded(true)
+          // Initialize connection after Solana is loaded
+          const conn = new window.solanaWeb3.Connection(RPC_URLS[NETWORK])
+          setConnection(conn)
+        }
+        script.onerror = (error) => {
+          console.error('Failed to load Solana Web3.js:', error)
+        }
+        document.head.appendChild(script)
+      } catch (error) {
+        console.error('Error loading Solana:', error)
+      }
+    }
+    
+    loadSolana()
+  }, [])
+
   // Calculate price based on area
   const calculatePrice = (area) => {
     const basePrice = (area - 1) * 0.1 + 0.1
@@ -114,13 +134,13 @@ function App() {
 
   // Get DEMPLAR token balance
   const getDemplarBalance = async (walletAddress) => {
+    if (!solanaLoaded || !connection) return 0
+    
     try {
-      const associatedTokenAddress = await getAssociatedTokenAddress(
-        DEMPLAR_MINT,
-        walletAddress
-      )
-      const tokenAccount = await connection.getTokenAccountBalance(associatedTokenAddress)
-      return tokenAccount.value.uiAmount || 0
+      const DEMPLAR_MINT = new window.solanaWeb3.PublicKey(TOKEN_MINTS[NETWORK])
+      // This is a simplified version - in reality you'd need SPL Token imports
+      // For now, return 0 as we're focusing on SOL transactions
+      return 0
     } catch (error) {
       return 0
     }
@@ -137,11 +157,13 @@ function App() {
       const response = await window.solana.connect()
       setWallet(response.publicKey)
       
-      const balance = await connection.getBalance(response.publicKey)
-      setBalance(balance / LAMPORTS_PER_SOL)
+      if (connection) {
+        const balance = await connection.getBalance(response.publicKey)
+        setBalance(balance / window.solanaWeb3.LAMPORTS_PER_SOL)
 
-      const demplarBal = await getDemplarBalance(response.publicKey)
-      setDemplarBalance(demplarBal)
+        const demplarBal = await getDemplarBalance(response.publicKey)
+        setDemplarBalance(demplarBal)
+      }
       
     } catch (error) {
       console.error('Wallet connection failed:', error)
@@ -160,18 +182,18 @@ function App() {
 
   // Request airdrop for devnet
   const requestAirdrop = async () => {
-    if (NETWORK !== 'devnet' || !wallet) {
+    if (NETWORK !== 'devnet' || !wallet || !connection || !solanaLoaded) {
       alert('Airdrop only available on devnet!')
       return
     }
 
     try {
       setLoading(true)
-      const signature = await connection.requestAirdrop(wallet, 1 * LAMPORTS_PER_SOL)
+      const signature = await connection.requestAirdrop(wallet, 1 * window.solanaWeb3.LAMPORTS_PER_SOL)
       await connection.confirmTransaction(signature, 'confirmed')
       
       const newBalance = await connection.getBalance(wallet)
-      setBalance(newBalance / LAMPORTS_PER_SOL)
+      setBalance(newBalance / window.solanaWeb3.LAMPORTS_PER_SOL)
       
       alert('Airdropped 1 SOL for testing!')
     } catch (error) {
@@ -216,6 +238,11 @@ function App() {
       return
     }
 
+    if (!solanaLoaded || !connection) {
+      alert('Solana is still loading, please wait...')
+      return
+    }
+
     const [areaStr, plotStr] = plotId.split('-')
     const area = parseInt(areaStr)
     const plotNumber = parseInt(plotStr)
@@ -244,10 +271,9 @@ function App() {
     setLoading(true)
     try {
       const currentPrice = calculatePrice(area)
-      let transaction = new Transaction()
       
       if (paymentMethod === 'SOL') {
-        const lamports = currentPrice * LAMPORTS_PER_SOL
+        const lamports = currentPrice * window.solanaWeb3.LAMPORTS_PER_SOL
         
         if (balance < currentPrice) {
           alert(`Insufficient SOL balance! Need ${currentPrice} SOL`)
@@ -255,133 +281,102 @@ function App() {
           return
         }
 
+        const TREASURY_WALLET = new window.solanaWeb3.PublicKey(TREASURY_WALLETS[NETWORK])
+        
+        let transaction = new window.solanaWeb3.Transaction()
         transaction.add(
-          SystemProgram.transfer({
+          window.solanaWeb3.SystemProgram.transfer({
             fromPubkey: wallet,
             toPubkey: TREASURY_WALLET,
             lamports: lamports
           })
         )
-      } else {
-        const demplarAmount = calculateDemplarAmount(currentPrice)
-        
-        if (demplarBalance < demplarAmount) {
-          alert(`Insufficient DEMPLAR balance! Need ${demplarAmount.toFixed(2)} DEMPLAR`)
-          setLoading(false)
-          return
-        }
 
-        try {
-          const userTokenAccount = await getAssociatedTokenAddress(DEMPLAR_MINT, wallet)
-          const treasuryTokenAccount = await getAssociatedTokenAddress(DEMPLAR_MINT, TREASURY_WALLET)
+        const { blockhash } = await connection.getLatestBlockhash()
+        transaction.recentBlockhash = blockhash
+        transaction.feePayer = wallet
+
+        const signedTransaction = await window.solana.signTransaction(transaction)
+        const signature = await connection.sendRawTransaction(signedTransaction.serialize())
+        
+        await connection.confirmTransaction(signature, 'confirmed')
+
+        // Update land data with purchase info
+        setLandData(prev => {
+          const newLandData = { ...prev }
+          const updatedArea = { ...newLandData.areas[area] }
           
-          const decimals = NETWORK === 'devnet' ? 9 : 6
-          const tokenAmount = Math.floor(demplarAmount * Math.pow(10, decimals))
-
-          transaction.add(
-            createTransferInstruction(
-              userTokenAccount,
-              treasuryTokenAccount,
-              wallet,
-              tokenAmount,
-              [],
-              TOKEN_PROGRAM_ID
-            )
-          )
-        } catch (error) {
-          alert('Error setting up DEMPLAR payment. Make sure you have DEMPLAR tokens!')
-          setLoading(false)
-          return
-        }
-      }
-
-      const { blockhash } = await connection.getLatestBlockhash()
-      transaction.recentBlockhash = blockhash
-      transaction.feePayer = wallet
-
-      const signedTransaction = await window.solana.signTransaction(transaction)
-      const signature = await connection.sendRawTransaction(signedTransaction.serialize())
-      
-      await connection.confirmTransaction(signature, 'confirmed')
-
-      // Update land data with purchase info
-      setLandData(prev => {
-        const newLandData = { ...prev }
-        const updatedArea = { ...newLandData.areas[area] }
-        
-        // Update the purchased plot
-        updatedArea.plots[plotIndex] = {
-          ...plot,
-          owned: true,
-          owner: wallet.toString(),
-          transactionSignature: signature,
-          purchaseTimestamp: Date.now(),
-          price: currentPrice,
-          paymentMethod: paymentMethod
-        }
-        
-        // Move to next available plot
-        updatedArea.nextAvailablePlot = plotIndex + 1
-        
-        // Check if area is completed
-        if (updatedArea.nextAvailablePlot >= updatedArea.plots.length) {
-          updatedArea.completed = true
+          // Update the purchased plot
+          updatedArea.plots[plotIndex] = {
+            ...plot,
+            owned: true,
+            owner: wallet.toString(),
+            transactionSignature: signature,
+            purchaseTimestamp: Date.now(),
+            price: currentPrice,
+            paymentMethod: paymentMethod
+          }
           
-          // Create next area with animation
-          const nextAreaNumber = area + 1
-          setAnimatingNewArea(true)
+          // Move to next available plot
+          updatedArea.nextAvailablePlot = plotIndex + 1
           
-          // Add new area after animation delay
-          setTimeout(() => {
-            setLandData(prevData => ({
-              ...prevData,
-              areas: {
-                ...prevData.areas,
-                [nextAreaNumber]: createNewArea(nextAreaNumber)
-              },
-              currentArea: nextAreaNumber,
-              maxAreaReached: Math.max(prevData.maxAreaReached, nextAreaNumber)
-            }))
+          // Check if area is completed
+          if (updatedArea.nextAvailablePlot >= updatedArea.plots.length) {
+            updatedArea.completed = true
             
-            setAnimatingNewArea(false)
+            // Create next area with animation
+            const nextAreaNumber = area + 1
+            setAnimatingNewArea(true)
             
-            // Scroll to new area
+            // Add new area after animation delay
             setTimeout(() => {
-              if (newAreaRef.current) {
-                newAreaRef.current.scrollIntoView({ behavior: 'smooth' })
-              }
-            }, 100)
-          }, 2000)
+              setLandData(prevData => ({
+                ...prevData,
+                areas: {
+                  ...prevData.areas,
+                  [nextAreaNumber]: createNewArea(nextAreaNumber)
+                },
+                currentArea: nextAreaNumber,
+                maxAreaReached: Math.max(prevData.maxAreaReached, nextAreaNumber)
+              }))
+              
+              setAnimatingNewArea(false)
+              
+              // Scroll to new area
+              setTimeout(() => {
+                if (newAreaRef.current) {
+                  newAreaRef.current.scrollIntoView({ behavior: 'smooth' })
+                }
+              }, 100)
+            }, 2000)
+          }
+          
+          newLandData.areas[area] = updatedArea
+          return newLandData
+        })
+
+        // Add to purchase history
+        const purchaseRecord = {
+          plotId,
+          area,
+          plotNumber,
+          owner: wallet.toString(),
+          signature,
+          timestamp: Date.now(),
+          price: currentPrice,
+          paymentMethod
         }
         
-        newLandData.areas[area] = updatedArea
-        return newLandData
-      })
+        setPurchaseHistory(prev => [...prev, purchaseRecord])
 
-      // Add to purchase history
-      const purchaseRecord = {
-        plotId,
-        area,
-        plotNumber,
-        owner: wallet.toString(),
-        signature,
-        timestamp: Date.now(),
-        price: currentPrice,
-        paymentMethod
-      }
-      
-      setPurchaseHistory(prev => [...prev, purchaseRecord])
-
-      // Update balances
-      if (paymentMethod === 'SOL') {
+        // Update balances
         const newBalance = await connection.getBalance(wallet)
-        setBalance(newBalance / LAMPORTS_PER_SOL)
-      } else {
-        const newDemplarBalance = await getDemplarBalance(wallet)
-        setDemplarBalance(newDemplarBalance)
-      }
+        setBalance(newBalance / window.solanaWeb3.LAMPORTS_PER_SOL)
 
-      alert(`Successfully purchased plot ${plotId}! Transaction: ${signature}`)
+        alert(`Successfully purchased plot ${plotId}! Transaction: ${signature}`)
+      } else {
+        alert('DEMPLAR payments not yet implemented in this version. Please use SOL.')
+      }
       
     } catch (error) {
       console.error('Transaction failed:', error)
@@ -396,12 +391,12 @@ function App() {
     fetchSolPrice()
     
     const autoConnect = async () => {
-      if (window.solana && window.solana.isConnected) {
+      if (window.solana && window.solana.isConnected && connection) {
         try {
           const response = await window.solana.connect({ onlyIfTrusted: true })
           setWallet(response.publicKey)
           const balance = await connection.getBalance(response.publicKey)
-          setBalance(balance / LAMPORTS_PER_SOL)
+          setBalance(balance / window.solanaWeb3.LAMPORTS_PER_SOL)
           
           const demplarBal = await getDemplarBalance(response.publicKey)
           setDemplarBalance(demplarBal)
@@ -410,8 +405,11 @@ function App() {
         }
       }
     }
-    autoConnect()
-  }, [connection])
+    
+    if (solanaLoaded && connection) {
+      autoConnect()
+    }
+  }, [connection, solanaLoaded])
 
   // Get current theme
   const getCurrentTheme = () => {
@@ -419,6 +417,27 @@ function App() {
   }
 
   const currentTheme = getCurrentTheme()
+
+  // Show loading screen while Solana is loading
+  if (!solanaLoaded) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: 'linear-gradient(135deg, #2d5016 0%, #4a7c59 50%, #6b8e23 100%)',
+        color: 'white',
+        fontFamily: 'Arial, sans-serif'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '3rem', marginBottom: '20px' }}>🏞️</div>
+          <h2>Loading Sequential Land Empire...</h2>
+          <p>Initializing Solana connection...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div style={{ 
@@ -526,7 +545,7 @@ function App() {
               }}
             >
               <option value="SOL" style={{ color: 'black' }}>Pay with SOL</option>
-              <option value="DEMPLAR" style={{ color: 'black' }}>Pay with DEMPLAR</option>
+              <option value="DEMPLAR" style={{ color: 'black' }}>Pay with DEMPLAR (Coming Soon)</option>
             </select>
             
             {wallet ? (
@@ -913,10 +932,10 @@ function App() {
           
           <div style={{ fontSize: '0.85rem', opacity: 0.8, marginTop: '20px' }}>
             <p style={{ marginBottom: '5px' }}>
-              Token: {DEMPLAR_MINT.toString().slice(0, 8)}...{DEMPLAR_MINT.toString().slice(-8)}
+              Token: {TOKEN_MINTS[NETWORK].slice(0, 8)}...{TOKEN_MINTS[NETWORK].slice(-8)}
             </p>
             <p style={{ margin: 0 }}>
-              Treasury: {TREASURY_WALLET.toString().slice(0, 8)}...{TREASURY_WALLET.toString().slice(-8)}
+              Treasury: {TREASURY_WALLETS[NETWORK].slice(0, 8)}...{TREASURY_WALLETS[NETWORK].slice(-8)}
             </p>
           </div>
         </div>
