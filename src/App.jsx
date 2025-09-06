@@ -7,6 +7,9 @@ const RPC_URLS = {
   devnet: 'https://api.devnet.solana.com'
 }
 
+// API configuration
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:3001/api'
+
 // Token and treasury configuration
 const TOKEN_MINTS = {
   mainnet: '4kU3B6hvnMEWNZadKWkQatky8fBgDLt7R9HwoysVpump',
@@ -14,8 +17,8 @@ const TOKEN_MINTS = {
 }
 
 const TREASURY_WALLETS = {
-  mainnet: 'FKFeSgtKAmgkKwxiXMD8woCWUh1ERyzAZARoFtJi2p9c',
-  devnet: 'EiyuaDkvKCyB6VbLu8NQGaw8euTX4yxq4gJ7bMjf7Nfz'
+  mainnet: '11111111111111111111111111111112',
+  devnet: '11111111111111111111111111111112'
 }
 
 // Climate themes for different areas
@@ -60,34 +63,44 @@ function App() {
   const [paymentMethod, setPaymentMethod] = useState('SOL')
   const [animatingNewArea, setAnimatingNewArea] = useState(false)
   const [solanaLoaded, setSolanaLoaded] = useState(false)
-  
-  // Enhanced land data structure
   const [landData, setLandData] = useState({
-    areas: {
-      8: {
-        plots: Array.from({length: 9}, (_, i) => ({
-          area: 8,
-          plotNumber: i + 2,
-          id: `8-${i + 2}`,
-          owned: false,
-          owner: null,
-          transactionSignature: null,
-          purchaseTimestamp: null,
-          price: null,
-          paymentMethod: null
-        })),
-        completed: false,
-        nextAvailablePlot: 0
-      }
-    },
+    areas: {},
     currentArea: 8,
     maxAreaReached: 8
   })
-
+  const [purchaseHistory, setPurchaseHistory] = useState([])
+  const [apiError, setApiError] = useState(null)
+  
   const newAreaRef = useRef(null)
 
-  // Purchase history state
-  const [purchaseHistory, setPurchaseHistory] = useState([])
+  // API Helper Functions
+  const fetchLandData = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/land-data`)
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      const data = await response.json()
+      setLandData(data)
+      setApiError(null)
+    } catch (error) {
+      console.error('Error fetching land data:', error)
+      setApiError('Failed to load land data from server')
+    }
+  }
+
+  const fetchPurchaseHistory = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/purchase-history`)
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`)
+      }
+      const data = await response.json()
+      setPurchaseHistory(data)
+    } catch (error) {
+      console.error('Error fetching purchase history:', error)
+    }
+  }
 
   // Load Solana Web3.js dynamically
   useEffect(() => {
@@ -114,6 +127,13 @@ function App() {
     loadSolana()
   }, [])
 
+  // Load initial data from server
+  useEffect(() => {
+    fetchLandData()
+    fetchPurchaseHistory()
+    fetchSolPrice()
+  }, [])
+
   // Calculate price based on area
   const calculatePrice = (area) => {
     const basePrice = (area - 1) * 0.1 + 0.1
@@ -125,7 +145,7 @@ function App() {
     try {
       const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd')
       const data = await response.json()
-      setSolToUsd(data.solana.usd)
+      setSolToUsd(data.solana?.usd || 100)
     } catch (error) {
       console.error('Failed to fetch SOL price:', error)
       setSolToUsd(100)
@@ -137,7 +157,6 @@ function App() {
     if (!solanaLoaded || !connection) return 0
     
     try {
-      const DEMPLAR_MINT = new window.solanaWeb3.PublicKey(TOKEN_MINTS[NETWORK])
       // This is a simplified version - in reality you'd need SPL Token imports
       // For now, return 0 as we're focusing on SOL transactions
       return 0
@@ -210,28 +229,7 @@ function App() {
     return usdAmount
   }
 
-  // Create new area when current area is completed
-  const createNewArea = (areaNumber) => {
-    const newArea = {
-      plots: Array.from({length: 10}, (_, i) => ({
-        area: areaNumber,
-        plotNumber: i + 1,
-        id: `${areaNumber}-${i + 1}`,
-        owned: false,
-        owner: null,
-        transactionSignature: null,
-        purchaseTimestamp: null,
-        price: null,
-        paymentMethod: null
-      })),
-      completed: false,
-      nextAvailablePlot: 0
-    }
-    
-    return newArea
-  }
-
-  // Purchase land plot (sequential only)
+  // Purchase land plot - now with server-side validation
   const purchaseLand = async (plotId) => {
     if (!wallet) {
       alert('Please connect your wallet first!')
@@ -245,29 +243,7 @@ function App() {
 
     const [areaStr, plotStr] = plotId.split('-')
     const area = parseInt(areaStr)
-    const plotNumber = parseInt(plotStr)
     
-    const areaData = landData.areas[area]
-    if (!areaData) {
-      alert('Invalid area!')
-      return
-    }
-
-    const plotIndex = areaData.plots.findIndex(p => p.id === plotId)
-    const plot = areaData.plots[plotIndex]
-    
-    if (!plot || plot.owned) {
-      alert('Plot not available!')
-      return
-    }
-
-    // Check if this is the next sequential plot
-    if (plotIndex !== areaData.nextAvailablePlot) {
-      const nextPlot = areaData.plots[areaData.nextAvailablePlot]
-      alert(`You must purchase plots in order! Next available plot is ${nextPlot.id}`)
-      return
-    }
-
     setLoading(true)
     try {
       const currentPrice = calculatePrice(area)
@@ -301,79 +277,50 @@ function App() {
         
         await connection.confirmTransaction(signature, 'confirmed')
 
-        // Update land data with purchase info
-        setLandData(prev => {
-          const newLandData = { ...prev }
-          const updatedArea = { ...newLandData.areas[area] }
-          
-          // Update the purchased plot
-          updatedArea.plots[plotIndex] = {
-            ...plot,
-            owned: true,
-            owner: wallet.toString(),
+        // Submit purchase to server
+        const purchaseResponse = await fetch(`${API_BASE_URL}/purchase-plot`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            plotId,
+            ownerAddress: wallet.toString(),
             transactionSignature: signature,
-            purchaseTimestamp: Date.now(),
             price: currentPrice,
             paymentMethod: paymentMethod
-          }
-          
-          // Move to next available plot
-          updatedArea.nextAvailablePlot = plotIndex + 1
-          
-          // Check if area is completed
-          if (updatedArea.nextAvailablePlot >= updatedArea.plots.length) {
-            updatedArea.completed = true
-            
-            // Create next area with animation
-            const nextAreaNumber = area + 1
-            setAnimatingNewArea(true)
-            
-            // Add new area after animation delay
-            setTimeout(() => {
-              setLandData(prevData => ({
-                ...prevData,
-                areas: {
-                  ...prevData.areas,
-                  [nextAreaNumber]: createNewArea(nextAreaNumber)
-                },
-                currentArea: nextAreaNumber,
-                maxAreaReached: Math.max(prevData.maxAreaReached, nextAreaNumber)
-              }))
-              
-              setAnimatingNewArea(false)
-              
-              // Scroll to new area
-              setTimeout(() => {
-                if (newAreaRef.current) {
-                  newAreaRef.current.scrollIntoView({ behavior: 'smooth' })
-                }
-              }, 100)
-            }, 2000)
-          }
-          
-          newLandData.areas[area] = updatedArea
-          return newLandData
+          })
         })
 
-        // Add to purchase history
-        const purchaseRecord = {
-          plotId,
-          area,
-          plotNumber,
-          owner: wallet.toString(),
-          signature,
-          timestamp: Date.now(),
-          price: currentPrice,
-          paymentMethod
-        }
-        
-        setPurchaseHistory(prev => [...prev, purchaseRecord])
+        const purchaseResult = await purchaseResponse.json()
 
-        // Update balances
+        if (!purchaseResponse.ok) {
+          throw new Error(purchaseResult.error || 'Server error')
+        }
+
+        // Refresh data from server
+        await fetchLandData()
+        await fetchPurchaseHistory()
+
+        // Update balance
         const newBalance = await connection.getBalance(wallet)
         setBalance(newBalance / window.solanaWeb3.LAMPORTS_PER_SOL)
 
+        if (purchaseResult.newAreaCreated) {
+          setAnimatingNewArea(true)
+          setTimeout(() => {
+            setAnimatingNewArea(false)
+            // Scroll to new area
+            setTimeout(() => {
+              if (newAreaRef.current) {
+                newAreaRef.current.scrollIntoView({ behavior: 'smooth' })
+              }
+            }, 100)
+          }, 2000)
+        }
+
         alert(`Successfully purchased plot ${plotId}! Transaction: ${signature}`)
+        
       } else {
         alert('DEMPLAR payments not yet implemented in this version. Please use SOL.')
       }
@@ -388,8 +335,6 @@ function App() {
 
   // Auto-connect wallet on load
   useEffect(() => {
-    fetchSolPrice()
-    
     const autoConnect = async () => {
       if (window.solana && window.solana.isConnected && connection) {
         try {
@@ -449,6 +394,36 @@ function App() {
     }}>
       <div style={{ maxWidth: '1200px', margin: '0 auto', color: 'white' }}>
         
+        {/* API Error Banner */}
+        {apiError && (
+          <div style={{
+            background: 'rgba(255, 0, 0, 0.3)',
+            border: '2px solid #ff4757',
+            borderRadius: '15px',
+            padding: '15px',
+            textAlign: 'center',
+            marginBottom: '20px',
+            backdropFilter: 'blur(10px)'
+          }}>
+            <h3 style={{ margin: '0 0 10px 0', color: '#ff4757' }}>⚠️ Server Connection Error</h3>
+            <p style={{ margin: '0', opacity: 0.9 }}>{apiError}</p>
+            <button 
+              onClick={() => window.location.reload()}
+              style={{
+                background: '#ff4757',
+                color: 'white',
+                border: 'none',
+                padding: '8px 16px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                marginTop: '10px'
+              }}
+            >
+              Reload Page
+            </button>
+          </div>
+        )}
+        
         {/* Network Banner */}
         <div style={{ 
           background: NETWORK === 'devnet' ? 'rgba(255, 152, 0, 0.3)' : 'rgba(0, 0, 0, 0.2)', 
@@ -478,7 +453,7 @@ function App() {
             🏞️ Sequential Land Empire
           </h1>
           <p style={{ fontSize: '1.3rem', opacity: 0.9, marginBottom: '10px' }}>
-            Build your empire one plot at a time
+            Build your empire one plot at a time - Forever ownership guaranteed!
           </p>
           <p style={{ fontSize: '1rem', opacity: 0.7 }}>
             SOL: ${solToUsd.toFixed(2)} USD
@@ -508,7 +483,7 @@ function App() {
                 <p style={{ margin: '5px 0' }}><strong>DEMPLAR:</strong> {demplarBalance.toFixed(2)} DEMPLAR</p>
               </div>
             ) : (
-              <p style={{ fontSize: '1.1rem' }}>Connect your wallet to start building</p>
+              <p style={{ fontSize: '1.1rem' }}>Connect your wallet to start building your empire</p>
             )}
           </div>
           
@@ -584,9 +559,9 @@ function App() {
           </div>
         </div>
 
-        {/* Render all areas */}
+        {/* Render all areas - REVERSE ORDER so new areas appear at top */}
         {Object.entries(landData.areas)
-          .sort(([a], [b]) => parseInt(a) - parseInt(b))
+          .sort(([a], [b]) => parseInt(b) - parseInt(a)) // Sort descending (newest first)
           .map(([areaNumber, areaData], index) => {
             const areaNum = parseInt(areaNumber)
             const theme = CLIMATE_THEMES[areaNum] || CLIMATE_THEMES[8]
@@ -594,6 +569,7 @@ function App() {
             const demplarPrice = calculateDemplarAmount(price)
             const isCurrentArea = areaNum === landData.currentArea
             const nextPlot = areaData.plots[areaData.nextAvailablePlot]
+            const isNewestArea = index === 0 // First in reversed list = newest area
 
             return (
               <div 
@@ -602,11 +578,12 @@ function App() {
                 style={{ 
                   marginBottom: '50px',
                   opacity: 1,
-                  transform: 'translateY(0)'
+                  transform: 'translateY(0)',
+                  order: isNewestArea ? -1 : 0 // Ensure newest stays at top
                 }}
               >
                 {/* Area Divider */}
-                {index > 0 && (
+                {index < Object.keys(landData.areas).length - 1 && (
                   <div style={{
                     height: '4px',
                     background: `linear-gradient(90deg, transparent, ${theme.accent}, transparent)`,
@@ -638,6 +615,22 @@ function App() {
                       fontWeight: 'bold'
                     }}>
                       ✅ COMPLETED
+                    </div>
+                  )}
+                  
+                  {isCurrentArea && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '15px',
+                      left: '20px',
+                      background: '#ffeb3b',
+                      color: '#000',
+                      padding: '8px 15px',
+                      borderRadius: '20px',
+                      fontSize: '0.9rem',
+                      fontWeight: 'bold'
+                    }}>
+                      🎯 CURRENT
                     </div>
                   )}
                   
@@ -730,7 +723,7 @@ function App() {
                         {plot.owned ? (
                           <div>
                             <p style={{ color: '#ff6b6b', fontWeight: 'bold', fontSize: '1.1rem', marginBottom: '10px' }}>
-                              OWNED
+                              OWNED FOREVER
                             </p>
                             <p style={{ fontSize: '0.85rem', opacity: 0.8, marginBottom: '8px' }}>
                               Owner: {plot.owner?.slice(0, 6)}...{plot.owner?.slice(-4)}
@@ -772,7 +765,7 @@ function App() {
                                 transition: 'all 0.2s'
                               }}
                             >
-                              {loading ? '⏳ Processing...' : `🛒 Buy with ${paymentMethod}`}
+                              {loading ? '⏳ Processing...' : `🛒 Buy Forever`}
                             </button>
                           </div>
                         ) : (
@@ -871,7 +864,7 @@ function App() {
             }}>
               <h4 style={{ marginBottom: '10px' }}>🎯 Sequential Purchasing</h4>
               <p style={{ fontSize: '0.95rem', opacity: 0.9 }}>
-                You must purchase plots in order - no skipping ahead! This ensures fair progression for all players.
+                You must purchase plots in order - no skipping ahead! This ensures fair progression for all players globally.
               </p>
             </div>
             
@@ -893,11 +886,33 @@ function App() {
               borderRadius: '15px',
               border: `1px solid ${currentTheme.accent}30`
             }}>
-              <h4 style={{ marginBottom: '10px' }}>📊 Blockchain Persistence</h4>
+              <h4 style={{ marginBottom: '10px' }}>🔒 Forever Ownership</h4>
               <p style={{ fontSize: '0.95rem', opacity: 0.9 }}>
-                All purchases are permanently recorded on Solana with transaction signatures and timestamps.
+                Each plot can only be purchased once by one person forever. All ownership is recorded on Solana blockchain permanently.
               </p>
             </div>
+          </div>
+
+          <div style={{
+            background: 'rgba(46, 213, 115, 0.2)',
+            border: '2px solid #2ed573',
+            borderRadius: '15px',
+            padding: '20px',
+            marginBottom: '20px'
+          }}>
+            <h4 style={{ color: '#2ed573', marginBottom: '10px' }}>🚀 Server-Side Persistence</h4>
+            <p style={{ fontSize: '0.95rem', opacity: 0.9', marginBottom: '8px' }}>
+              • All land ownership is stored on our secure servers
+            </p>
+            <p style={{ fontSize: '0.95rem', opacity: 0.9', marginBottom: '8px' }}>
+              • Every purchase is verified on Solana blockchain
+            </p>
+            <p style={{ fontSize: '0.95rem', opacity: 0.9', marginBottom: '8px' }}>
+              • Global state shared by all players - no local storage
+            </p>
+            <p style={{ fontSize: '0.95rem', opacity: 0.9' }}>
+              • Once someone owns a plot anywhere in the world, it's theirs forever!
+            </p>
           </div>
 
           <div style={{ marginBottom: '20px' }}>
@@ -925,7 +940,7 @@ function App() {
               </p>
               <p style={{ fontSize: '0.95rem', opacity: 0.9 }}>
                 Prices are 1% of mainnet for easy testing. Use "Get Test SOL" for free devnet SOL!
-                All transactions are on Solana devnet and have no real value.
+                All transactions are on Solana devnet and have no real value. Server persistence is fully functional.
               </p>
             </div>
           )}
@@ -949,27 +964,27 @@ function App() {
             marginTop: '30px',
             backdropFilter: 'blur(10px)'
           }}>
-            <h3 style={{ marginBottom: '20px', textAlign: 'center' }}>📜 Your Purchase History</h3>
+            <h3 style={{ marginBottom: '20px', textAlign: 'center' }}>📜 Global Purchase History</h3>
             <div style={{
-              maxHeight: '200px',
+              maxHeight: '300px',
               overflowY: 'auto',
               background: 'rgba(0,0,0,0.2)',
               borderRadius: '10px',
               padding: '15px'
             }}>
               {purchaseHistory
-                .slice()
-                .reverse()
+                .slice(0, 50) // Show last 50 purchases
                 .map((record, index) => (
                   <div key={index} style={{
                     display: 'flex',
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     padding: '8px 0',
-                    borderBottom: index < purchaseHistory.length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none',
+                    borderBottom: index < Math.min(purchaseHistory.length, 50) - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none',
                     fontSize: '0.9rem'
                   }}>
                     <span>Plot {record.plotId}</span>
+                    <span>{record.owner.slice(0, 6)}...{record.owner.slice(-4)}</span>
                     <span>{record.price?.toFixed(4)} {record.paymentMethod}</span>
                     <span style={{ opacity: 0.7 }}>
                       {new Date(record.timestamp).toLocaleDateString()}
@@ -977,6 +992,9 @@ function App() {
                   </div>
                 ))}
             </div>
+            <p style={{ textAlign: 'center', opacity: 0.7, fontSize: '0.9rem', marginTop: '10px' }}>
+              Showing latest {Math.min(purchaseHistory.length, 50)} purchases from all players globally
+            </p>
           </div>
         )}
       </div>
