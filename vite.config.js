@@ -14,5 +14,6 @@ export default defineConfig({
       stream: 'stream-browserify',
       crypto: 'crypto-browserify'
     }
-  }
+  },
+  envPrefix: ['VITE_', 'REACT_APP_']
 })
