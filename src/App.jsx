@@ -1,14 +1,20 @@
 import React, { useState, useEffect } from 'react'
 import { Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from '@solana/web3.js'
+import { TOKEN_PROGRAM_ID, getAssociatedTokenAddress, createTransferInstruction } from '@solana/spl-token'
 
-// Mock DEMPLAR token mint address - replace with actual token mint
-const DEMPLAR_MINT = new PublicKey('11111111111111111111111111111111')
+// DEMPLAR token mint from environment variable
+const DEMPLAR_MINT = new PublicKey(import.meta.env.VITE_SPL_TOKEN_MINT || '4kU3B6hvnMEWNZadKWkQatky8fBgDLt7R9HwoysVpump')
 const SOLANA_RPC_URL = 'https://api.mainnet-beta.solana.com'
+
+// Treasury wallet - replace with your actual treasury address
+const TREASURY_WALLET = new PublicKey('YourTreasuryWalletAddressHere')
 
 function App() {
   const [connection] = useState(new Connection(SOLANA_RPC_URL))
   const [wallet, setWallet] = useState(null)
   const [balance, setBalance] = useState(0)
+  const [demplarBalance, setDemplarBalance] = useState(0)
+  const [solToUsd, setSolToUsd] = useState(0)
   const [landData, setLandData] = useState({
     currentArea: 8,
     availablePlots: Array.from({length: 9}, (_, i) => ({ 
@@ -29,6 +35,34 @@ function App() {
 
   const currentPrice = calculatePrice(landData.currentArea)
 
+  // Fetch SOL to USD price
+  const fetchSolPrice = async () => {
+    try {
+      const response = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=solana&vs_currencies=usd')
+      const data = await response.json()
+      setSolToUsd(data.solana.usd)
+    } catch (error) {
+      console.error('Failed to fetch SOL price:', error)
+      setSolToUsd(100) // Fallback price
+    }
+  }
+
+  // Get DEMPLAR token balance
+  const getDemplarBalance = async (walletAddress) => {
+    try {
+      const associatedTokenAddress = await getAssociatedTokenAddress(
+        DEMPLAR_MINT,
+        walletAddress
+      )
+      
+      const tokenAccount = await connection.getTokenAccountBalance(associatedTokenAddress)
+      return tokenAccount.value.uiAmount || 0
+    } catch (error) {
+      console.log('No DEMPLAR token account found or error:', error)
+      return 0
+    }
+  }
+
   // Connect wallet
   const connectWallet = async () => {
     try {
@@ -40,9 +74,14 @@ function App() {
       const response = await window.solana.connect()
       setWallet(response.publicKey)
       
-      // Get balance
+      // Get SOL balance
       const balance = await connection.getBalance(response.publicKey)
       setBalance(balance / LAMPORTS_PER_SOL)
+
+      // Get DEMPLAR balance
+      const demplarBal = await getDemplarBalance(response.publicKey)
+      setDemplarBalance(demplarBal)
+      
     } catch (error) {
       console.error('Wallet connection failed:', error)
     }
@@ -54,7 +93,15 @@ function App() {
       window.solana.disconnect()
       setWallet(null)
       setBalance(0)
+      setDemplarBalance(0)
     }
+  }
+
+  // Calculate DEMPLAR equivalent
+  const calculateDemplarAmount = (solAmount) => {
+    const usdAmount = solAmount * solToUsd
+    // Assuming 1 DEMPLAR = 1 USD for now - adjust this ratio as needed
+    return usdAmount
   }
 
   // Purchase land plot
@@ -72,7 +119,7 @@ function App() {
         return
       }
 
-      let transaction
+      let transaction = new Transaction()
       
       if (paymentMethod === 'SOL') {
         // SOL payment
@@ -80,21 +127,58 @@ function App() {
         
         if (balance < currentPrice) {
           alert(`Insufficient SOL balance! Need ${currentPrice} SOL`)
+          setLoading(false)
           return
         }
 
-        transaction = new Transaction().add(
+        transaction.add(
           SystemProgram.transfer({
             fromPubkey: wallet,
-            toPubkey: new PublicKey('YourTreasuryWalletAddressHere'), // Replace with your treasury
+            toPubkey: TREASURY_WALLET,
             lamports: lamports
           })
         )
       } else {
-        // DEMPLAR token payment - would need SPL token transfer
-        alert('DEMPLAR token payments coming soon!')
-        setLoading(false)
-        return
+        // DEMPLAR token payment
+        const demplarAmount = calculateDemplarAmount(currentPrice)
+        
+        if (demplarBalance < demplarAmount) {
+          alert(`Insufficient DEMPLAR balance! Need ${demplarAmount.toFixed(2)} DEMPLAR`)
+          setLoading(false)
+          return
+        }
+
+        try {
+          // Get user's DEMPLAR token account
+          const userTokenAccount = await getAssociatedTokenAddress(
+            DEMPLAR_MINT,
+            wallet
+          )
+
+          // Get treasury's DEMPLAR token account
+          const treasuryTokenAccount = await getAssociatedTokenAddress(
+            DEMPLAR_MINT,
+            TREASURY_WALLET
+          )
+
+          // Convert DEMPLAR amount to token units (assuming 6 decimals for DEMPLAR)
+          const tokenAmount = Math.floor(demplarAmount * Math.pow(10, 6))
+
+          transaction.add(
+            createTransferInstruction(
+              userTokenAccount,
+              treasuryTokenAccount,
+              wallet,
+              tokenAmount,
+              [],
+              TOKEN_PROGRAM_ID
+            )
+          )
+        } catch (error) {
+          alert('Error setting up DEMPLAR payment. Make sure you have DEMPLAR tokens!')
+          setLoading(false)
+          return
+        }
       }
 
       // Get recent blockhash
@@ -139,22 +223,29 @@ function App() {
         return updatedData
       })
 
-      // Update balance
-      const newBalance = await connection.getBalance(wallet)
-      setBalance(newBalance / LAMPORTS_PER_SOL)
+      // Update balances
+      if (paymentMethod === 'SOL') {
+        const newBalance = await connection.getBalance(wallet)
+        setBalance(newBalance / LAMPORTS_PER_SOL)
+      } else {
+        const newDemplarBalance = await getDemplarBalance(wallet)
+        setDemplarBalance(newDemplarBalance)
+      }
 
-      alert(`Successfully purchased plot ${plotId}!`)
+      alert(`Successfully purchased plot ${plotId} with ${paymentMethod}! Transaction: ${signature}`)
       
     } catch (error) {
       console.error('Transaction failed:', error)
-      alert('Transaction failed! Please try again.')
+      alert(`Transaction failed: ${error.message}`)
     } finally {
       setLoading(false)
     }
   }
 
-  // Auto-connect wallet on page load if previously connected
+  // Auto-connect wallet and fetch price on page load
   useEffect(() => {
+    fetchSolPrice()
+    
     const autoConnect = async () => {
       if (window.solana && window.solana.isConnected) {
         try {
@@ -162,6 +253,9 @@ function App() {
           setWallet(response.publicKey)
           const balance = await connection.getBalance(response.publicKey)
           setBalance(balance / LAMPORTS_PER_SOL)
+          
+          const demplarBal = await getDemplarBalance(response.publicKey)
+          setDemplarBalance(demplarBal)
         } catch (error) {
           console.log('Auto-connect failed:', error)
         }
@@ -169,6 +263,8 @@ function App() {
     }
     autoConnect()
   }, [connection])
+
+  const demplarEquivalent = calculateDemplarAmount(currentPrice)
 
   return (
     <div style={{ 
@@ -186,6 +282,9 @@ function App() {
           </h1>
           <p style={{ fontSize: '1.2rem', opacity: 0.9 }}>
             Own virtual land on the Solana blockchain
+          </p>
+          <p style={{ fontSize: '1rem', opacity: 0.7 }}>
+            SOL Price: ${solToUsd.toFixed(2)} USD
           </p>
         </div>
 
@@ -206,7 +305,8 @@ function App() {
             {wallet ? (
               <div>
                 <p><strong>Connected:</strong> {wallet.toString().slice(0, 8)}...{wallet.toString().slice(-8)}</p>
-                <p><strong>Balance:</strong> {balance.toFixed(4)} SOL</p>
+                <p><strong>SOL Balance:</strong> {balance.toFixed(4)} SOL</p>
+                <p><strong>DEMPLAR Balance:</strong> {demplarBalance.toFixed(2)} DEMPLAR</p>
               </div>
             ) : (
               <p>Connect your wallet to purchase land</p>
@@ -227,7 +327,7 @@ function App() {
               }}
             >
               <option value="SOL" style={{ color: 'black' }}>Pay with SOL</option>
-              <option value="DEMPLAR" style={{ color: 'black' }}>Pay with DEMPLAR (Soon)</option>
+              <option value="DEMPLAR" style={{ color: 'black' }}>Pay with DEMPLAR</option>
             </select>
             
             {wallet ? (
@@ -275,10 +375,14 @@ function App() {
           textAlign: 'center'
         }}>
           <h2 style={{ margin: '0 0 10px 0' }}>Current Area: {landData.currentArea}</h2>
-          <p style={{ fontSize: '1.1rem', margin: '5px 0' }}>
-            Price per plot: <strong>{currentPrice} SOL</strong>
-            {paymentMethod === 'DEMPLAR' && ' (or equivalent in DEMPLAR)'}
-          </p>
+          <div style={{ display: 'flex', justifyContent: 'center', gap: '40px', flexWrap: 'wrap' }}>
+            <p style={{ fontSize: '1.1rem', margin: '5px 0' }}>
+              <strong>SOL Price:</strong> {currentPrice} SOL
+            </p>
+            <p style={{ fontSize: '1.1rem', margin: '5px 0' }}>
+              <strong>DEMPLAR Price:</strong> {demplarEquivalent.toFixed(2)} DEMPLAR
+            </p>
+          </div>
           <p style={{ opacity: 0.8 }}>
             Available plots: {landData.availablePlots.filter(p => !p.owned).length} / {landData.availablePlots.length}
           </p>
@@ -316,6 +420,85 @@ function App() {
               }}
               onMouseLeave={(e) => {
                 e.target.style.transform = 'translateY(0)'
+                e.target.style.boxShadow = 'none'
+              }}
+            >
+              <h3 style={{ margin: '0 0 15px 0', fontSize: '1.4rem' }}>
+                📍 Plot {plot.id}
+              </h3>
+              
+              {plot.owned ? (
+                <div>
+                  <p style={{ color: '#ff6b6b', fontWeight: 'bold' }}>OWNED</p>
+                  <p style={{ fontSize: '0.8rem', opacity: 0.7 }}>
+                    Owner: {plot.owner?.slice(0, 6)}...{plot.owner?.slice(-4)}
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <p style={{ marginBottom: '15px' }}>
+                    <strong>
+                      {paymentMethod === 'SOL' 
+                        ? `${currentPrice} SOL` 
+                        : `${demplarEquivalent.toFixed(2)} DEMPLAR`}
+                    </strong>
+                  </p>
+                  <button
+                    onClick={() => purchaseLand(plot.id)}
+                    disabled={loading || !wallet}
+                    style={{
+                      background: loading || !wallet 
+                        ? 'rgba(255,255,255,0.3)' 
+                        : '#3742fa',
+                      color: 'white',
+                      border: 'none',
+                      padding: '12px 24px',
+                      borderRadius: '8px',
+                      cursor: loading || !wallet ? 'not-allowed' : 'pointer',
+                      fontSize: '14px',
+                      fontWeight: 'bold',
+                      width: '100%',
+                      transition: 'background 0.2s'
+                    }}
+                  >
+                    {loading ? '⏳ Processing...' : `🛒 Buy with ${paymentMethod}`}
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+
+        {/* Info Section */}
+        <div style={{ 
+          background: 'rgba(255,255,255,0.1)', 
+          borderRadius: '15px', 
+          padding: '20px',
+          textAlign: 'center'
+        }}>
+          <h3>How It Works</h3>
+          <p>
+            🏗️ Start in Area {landData.currentArea} with plots {landData.currentArea}-2 through {landData.currentArea}-{landData.currentArea + 2}
+          </p>
+          <p>
+            💰 Each area increases in price by 0.1 SOL (Area {landData.currentArea} = {currentPrice} SOL)
+          </p>
+          <p>
+            🔄 Once all plots in an area are purchased, the next area opens automatically
+          </p>
+          <p>
+            🪙 Pay with SOL or DEMPLAR tokens at USD equivalent rates
+          </p>
+          <p style={{ fontSize: '0.9rem', opacity: 0.8 }}>
+            DEMPLAR Token: {DEMPLAR_MINT.toString()}
+          </p>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+export default ApptranslateY(0)'
                 e.target.style.boxShadow = 'none'
               }}
             >
